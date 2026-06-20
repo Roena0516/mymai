@@ -10,5 +10,7 @@ cert.pem
 debug_*.html
 avatar_*.png
 avatar_*.jpg
+avatar.png
+scripts/gen-avatar.mjs
 data/
 .omo/
