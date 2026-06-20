@@ -89,13 +89,22 @@ function ratingChar(r: number): string {
   return "⚪";
 }
 
+function sep(label: string, w = 22): string {
+  const len = [...label].length;
+  const left = "━".repeat(Math.floor((w - len) / 2));
+  const right = "━".repeat(Math.ceil((w - len) / 2));
+  return left + " " + label + " " + right;
+}
+
 function profileEmb(p: NonNullable<ReturnType<typeof getCachedProfile>>, hasAvatar: boolean) {
+  const stars = p.stars && p.stars !== "0" ? " ⭐×" + p.stars : "";
   const emb = new EmbedBuilder()
     .setColor(ratingColor(p.rating))
-    .setAuthor({ name: `${TICON[p.trophyClass] || "⚪"} ${p.trophy || "칭호 없음"}` })
-    .setTitle(`${p.playerName || "이름 없음"}  ·  ${p.rating || 0}`)
+    .setAuthor({ name: sep("Profile") })
+    .setTitle(`${TICON[p.trophyClass] || "⚪"} ${p.trophy || "칭호 없음"}`)
     .setDescription(
-      `플레이 ${p.playCount || 0}회${p.stars && p.stars !== "0" ? " · ⭐×" + p.stars : ""}`
+      `**${p.playerName || "이름 없음"}**  ·  ${ratingChar(p.rating)} **${p.rating || 0}**\n` +
+      `플레이 ${p.playCount || 0}회${stars}`
     )
     .setFooter({ text: `마지막 동기화: ${new Date(p.lastSyncedAt).toLocaleString("ko-KR")}` });
   if (hasAvatar) emb.setThumbnail("attachment://avatar.png");
@@ -111,10 +120,11 @@ function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, view: s
     return [new EmbedBuilder().setColor(0x2b2d31).setDescription("기록 없음")];
   }
   return records.map((r: any, i: number) => {
+    const emoji = view === "recent" ? "🎵" : view === "top5" ? "🏆" : "📊";
     const kind = r.musicKind ? ` [${r.musicKind}]` : "";
     const emb = new EmbedBuilder()
       .setColor(0x2b2d31)
-      .setAuthor({ name: `${view === "recent" ? "🎵" : "🏆"} #${i + 1}` })
+      .setAuthor({ name: sep(`${emoji} #${i + 1}`) })
       .setTitle(r.title)
       .setDescription(`${kind} \`${r.diff} ${r.level}\`\n${r.achievement}${r.date ? " · " + r.date : ""}`);
     if (r.jacketUrl) emb.setImage(r.jacketUrl);
@@ -128,6 +138,7 @@ function selectMenu(view: string) {
       .addOptions(
         { label: "최근 플레이", value: "recent", default: view === "recent", emoji: { name: "🎵" } },
         { label: "TOP 5", value: "top5", default: view === "top5", emoji: { name: "⭐" } },
+        { label: "레이팅 포함곡", value: "rating", default: view === "rating", emoji: { name: "📊" } },
       ),
   );
 }
