@@ -1,7 +1,7 @@
 import {
   Client, Events, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, MessageFlags,
   ChatInputCommandInteraction, REST, Routes, StringSelectMenuBuilder, ActionRowBuilder,
-  StringSelectMenuInteraction, AttachmentBuilder,
+  StringSelectMenuInteraction, AttachmentBuilder, ButtonBuilder, ButtonStyle, ButtonInteraction,
 } from "discord.js";
 import { initEncryption } from "./crypto";
 import { startWebServer, buildBookmarklet, setBaseUrl } from "./web";
@@ -36,6 +36,7 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, async (i) => {
   if (i.isChatInputCommand()) await handleCmd(i);
   if (i.isStringSelectMenu()) await handleSelect(i);
+  if (i.isButton()) await handleButton(i);
 });
 
 const TICON: Record<string, string> = { normal: "⚪", bronze: "🟤", silver: "⚪", gold: "🟡", rainbow: "🌈" };
@@ -97,13 +98,13 @@ function sep(label: string, w = 22): string {
 }
 
 function profileEmb(p: NonNullable<ReturnType<typeof getCachedProfile>>, hasAvatar: boolean) {
-  const stars = p.stars && p.stars !== "0" ? " ⭐×" + p.stars : "";
+  const stars = p.stars && p.stars !== "0" ? " · ★×" + p.stars : "";
   const emb = new EmbedBuilder()
     .setColor(ratingColor(p.rating))
     .setAuthor({ name: sep("Profile") })
-    .setTitle(`${TICON[p.trophyClass] || "⚪"} ${p.trophy || "칭호 없음"}`)
+    .setTitle(p.trophy || "칭호 없음")
     .setDescription(
-      `**${p.playerName || "이름 없음"}**  ·  ${ratingChar(p.rating)} **${p.rating || 0}**\n` +
+      `**${p.playerName || "이름 없음"}**  ·  **${p.rating || 0}**\n` +
       `플레이 ${p.playCount || 0}회${stars}`
     )
     .setFooter({ text: `마지막 동기화: ${new Date(p.lastSyncedAt).toLocaleString("ko-KR")}` });
@@ -111,44 +112,75 @@ function profileEmb(p: NonNullable<ReturnType<typeof getCachedProfile>>, hasAvat
   return emb;
 }
 
-function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, view: string): EmbedBuilder[] {
+function getSongList(p: NonNullable<ReturnType<typeof getCachedProfile>>, view: string): any[] {
   const raw = JSON.parse(p.recentJson || "{}");
-  const recentRecords: any[] = Array.isArray(raw) ? raw : (raw.recent || []);
-  const top5Records: any[] = Array.isArray(raw) ? [] : (raw.top5 || []);
-  const records = view === "recent" ? recentRecords : top5Records;
-  if (records.length === 0) {
+  const recent: any[] = Array.isArray(raw) ? raw : (raw.recent || []);
+  const top5: any[] = Array.isArray(raw) ? [] : (raw.top5 || []);
+  const rating: any[] = Array.isArray(raw) ? [] : (raw.rating || []);
+  if (view === "recent") return recent;
+  if (view === "top5") return top5;
+  if (view === "rating") return rating;
+  return [];
+}
+
+function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, view: string, page: number): EmbedBuilder[] {
+  const records = getSongList(p, view);
+  const pageSize = 5;
+  const start = (page - 1) * pageSize;
+  const slice = records.slice(start, start + pageSize);
+  if (slice.length === 0) {
     return [new EmbedBuilder().setColor(0x2b2d31).setDescription("기록 없음")];
   }
-  return records.map((r: any, i: number) => {
-    const emoji = view === "recent" ? "🎵" : view === "top5" ? "🏆" : "📊";
+  return slice.map((r: any, i: number) => {
+    const idx = start + i + 1;
     const kind = r.musicKind ? ` [${r.musicKind}]` : "";
+    const descParts = [`${kind} \`${r.diff} ${r.level}\``];
+    if (view === "rating" && r.ratingScore) descParts.push(`Rating +${r.ratingScore}`);
     const emb = new EmbedBuilder()
       .setColor(0x2b2d31)
-      .setAuthor({ name: sep(`${emoji} #${i + 1}`) })
-      .setTitle(r.title)
-      .setDescription(`${kind} \`${r.diff} ${r.level}\`\n${r.achievement}${r.date ? " · " + r.date : ""}`);
+      .setAuthor({ name: sep(`#${idx}`) })
+      .setTitle(sep(r.title, 18))
+      .setDescription(descParts.join(" · "))
+      .addFields(
+        { name: "달성률", value: r.achievement, inline: true },
+        { name: "플레이일", value: r.date || "-", inline: true },
+      );
     if (r.jacketUrl) emb.setImage(r.jacketUrl);
     return emb;
   });
+}
+
+const PAGE_ID = "maimai_page";
+
+function paginationButtons(view: string, page: number, totalRecords: number): ActionRowBuilder<ButtonBuilder> {
+  const pageSize = 5;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`${PAGE_ID}:${view}:${page - 1}`).setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
+    new ButtonBuilder().setCustomId(`${PAGE_ID}:${view}:${page + 1}`).setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages),
+  );
 }
 
 function selectMenu(view: string) {
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder().setCustomId("maimai_view").setPlaceholder("보기 선택")
       .addOptions(
-        { label: "최근 플레이", value: "recent", default: view === "recent", emoji: { name: "🎵" } },
-        { label: "TOP 5", value: "top5", default: view === "top5", emoji: { name: "⭐" } },
-        { label: "레이팅 포함곡", value: "rating", default: view === "rating", emoji: { name: "📊" } },
+        { label: "최근 플레이", value: "recent", default: view === "recent" },
+        { label: "TOP 5", value: "top5", default: view === "top5" },
+        { label: "레이팅 포함곡", value: "rating", default: view === "rating" },
       ),
   );
 }
 
-function buildProfileReply(cached: NonNullable<ReturnType<typeof getCachedProfile>>, userId: string, view: string) {
+function buildProfileReply(cached: NonNullable<ReturnType<typeof getCachedProfile>>, userId: string, view: string, page = 1) {
   const avatar = buildAvatarAttachment(userId);
   const files = avatar ? [avatar] : [];
+  const songs = getSongList(cached, view);
+  const components: any[] = [selectMenu(view)];
+  if (songs.length > 5) components.push(paginationButtons(view, page, songs.length));
   return {
-    embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, view)],
-    components: [selectMenu(view)],
+    embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, view, page)],
+    components,
     files,
   };
 }
@@ -192,7 +224,27 @@ async function handleSelect(interaction: StringSelectMenuInteraction) {
   const view = interaction.values[0];
   const avatar = buildAvatarAttachment(userId);
   const files = avatar ? [avatar] : [];
-  await interaction.update({ embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, view)], components: [selectMenu(view)], files });
+  const songs = getSongList(cached, view);
+  const components: any[] = [selectMenu(view)];
+  if (songs.length > 5) components.push(paginationButtons(view, 1, songs.length));
+  await interaction.update({ embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, view, 1)], components, files });
+}
+
+async function handleButton(interaction: ButtonInteraction) {
+  if (!interaction.customId.startsWith(PAGE_ID + ":")) return;
+  const [_, view, pageStr] = interaction.customId.split(":");
+  const page = parseInt(pageStr) || 1;
+  const userId = interaction.user.id;
+  const stored = loadUserSession(userId);
+  if (!stored?.friendCode) { await interaction.reply({ content: "먼저 /북마클릿으로 등록하세요.", flags: MessageFlags.Ephemeral }); return; }
+  const cached = getCachedProfile(stored.friendCode);
+  if (!cached) { await interaction.reply({ content: "데이터 없음.", flags: MessageFlags.Ephemeral }); return; }
+  const avatar = buildAvatarAttachment(userId);
+  const files = avatar ? [avatar] : [];
+  const songs = getSongList(cached, view);
+  const components: any[] = [selectMenu(view)];
+  if (songs.length > 5) components.push(paginationButtons(view, page, songs.length));
+  await interaction.update({ embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, view, page)], components, files });
 }
 
 process.on("SIGINT", () => { closeDb(); process.exit(0); });
