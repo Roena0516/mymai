@@ -89,7 +89,7 @@ function ratingChar(r: number): string {
   return "⚪";
 }
 
-function sep(label: string, totalW = 26): string {
+function sep(label: string, totalW = 30): string {
   const frame = Math.max(0, totalW - label.length - 2);
   const left = "─".repeat(Math.floor(frame / 2));
   const right = "─".repeat(Math.ceil(frame / 2));
