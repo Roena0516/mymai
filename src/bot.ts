@@ -20,9 +20,8 @@ startWebServer(PORT);
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 const commands = [
-  new SlashCommandBuilder().setName("프로필").setDescription("내 maimai DX 프로필"),
-  new SlashCommandBuilder().setName("친구검색").setDescription("친구 코드로 검색")
-    .addStringOption((o) => o.setName("코드").setDescription("13자리 친구 코드").setRequired(true)),
+  new SlashCommandBuilder().setName("프로필").setDescription("내 maimai DX 프로필 보기"),
+  new SlashCommandBuilder().setName("북마클릿").setDescription("프로필 동기화용 북마클릿 코드 받기"),
 ].map((c) => c.toJSON());
 
 client.once(Events.ClientReady, async (c) => {
@@ -108,6 +107,13 @@ async function handleCmd(interaction: ChatInputCommandInteraction) {
         return;
       }
     }
+    await interaction.reply({
+      content: "아직 프로필이 등록되지 않았습니다. `/북마클릿` 명령어로 먼저 등록해주세요.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (interaction.commandName === "북마클릿") {
     const token = getUserSyncToken(userId);
     await interaction.reply({
       embeds: [new EmbedBuilder().setTitle("📋 프로필 등록").setColor(0x888888)
@@ -117,20 +123,13 @@ async function handleCmd(interaction: ChatInputCommandInteraction) {
     });
     return;
   }
-  if (interaction.commandName === "친구검색") {
-    const code = interaction.options.getString("코드", true);
-    if (code.length !== 13 || !/^\d+$/.test(code)) { await interaction.reply({ content: "13자리 숫자.", flags: MessageFlags.Ephemeral }); return; }
-    const cached = getCachedProfile(code);
-    if (cached) { await interaction.reply(buildProfileReply(cached, userId, "recent")); }
-    else { await interaction.reply({ content: "캐시 없음.", flags: MessageFlags.Ephemeral }); }
-  }
 }
 
 async function handleSelect(interaction: StringSelectMenuInteraction) {
   if (interaction.customId !== "maimai_view") return;
   const userId = interaction.user.id;
   const stored = loadUserSession(userId);
-  if (!stored?.friendCode) { await interaction.reply({ content: "먼저 /프로필로 등록하세요.", flags: MessageFlags.Ephemeral }); return; }
+  if (!stored?.friendCode) { await interaction.reply({ content: "먼저 /북마클릿으로 등록하세요.", flags: MessageFlags.Ephemeral }); return; }
   const cached = getCachedProfile(stored.friendCode);
   if (!cached) { await interaction.reply({ content: "데이터 없음.", flags: MessageFlags.Ephemeral }); return; }
   const view = interaction.values[0];
