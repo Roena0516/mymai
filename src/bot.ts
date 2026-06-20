@@ -90,16 +90,13 @@ function ratingChar(r: number): string {
 }
 
 function profileEmb(p: NonNullable<ReturnType<typeof getCachedProfile>>, hasAvatar: boolean) {
-  const grade = parseGradeText(p.gradeImg);
   const emb = new EmbedBuilder()
     .setColor(ratingColor(p.rating))
-    .setAuthor({ name: `${TICON[p.trophyClass] || "⚪"} ${p.trophy || "칭호 없음"} (${p.trophyClass})` })
-    .setTitle(p.playerName || "이름 없음")
+    .setAuthor({ name: `${TICON[p.trophyClass] || "⚪"} ${p.trophy || "칭호 없음"}` })
+    .setTitle(`${p.playerName || "이름 없음"}  ·  ${p.rating || 0}`)
     .setDescription(
-      `${ratingChar(p.rating)} ${p.rating || 0}\n` +
-      `🎮 ${p.playCount || 0}회${p.stars ? " ⭐×" + p.stars : ""}${grade ? " | 등급: " + grade : ""}`
+      `플레이 ${p.playCount || 0}회${p.stars && p.stars !== "0" ? " · ⭐×" + p.stars : ""}`
     )
-    .addFields({ name: "친구 코드", value: p.friendCode || "-", inline: true })
     .setFooter({ text: `마지막 동기화: ${new Date(p.lastSyncedAt).toLocaleString("ko-KR")}` });
   if (hasAvatar) emb.setThumbnail("attachment://avatar.png");
   return emb;

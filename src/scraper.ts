@@ -37,8 +37,8 @@ export function parseHome(html: string): Partial<MaimaiProfile> {
     avatar: absUrl($("img.w_112.f_l").attr("src") || $("img[src*='Icon']").attr("src") || $(".basic_block img").first().attr("src")),
     trophy: $(".trophy_inner_block span").first().text().trim(),
     trophyClass: ($(".trophy_block").attr("class") || "").split(/\s+/).find(c => c.match(/^trophy_(?!block)/i))?.replace(/^trophy_/i, "").toLowerCase() || "normal",
-    gradeImg: absUrl($(".basic_block img.h_35").attr("src") || $("img.f_l.h_25").attr("src")),
-    stars: $(".basic_block img.h_20").parent().text().trim() || "0",
+    gradeImg: absUrl($("img.h_35[src*='class']").attr("src") || $("img.h_35.f_l").last().attr("src")),
+    stars: $("img[src*='icon_star']").parent().text().trim().replace(/[^0-9]/g, "") || "0",
     comment: $(".friend_comment_block").text().trim(),
     friendCode: $("input[name=idx]").attr("value"),
   };
