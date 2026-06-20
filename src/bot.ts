@@ -90,10 +90,11 @@ function ratingChar(r: number): string {
   return "⚪";
 }
 
-function sep(label: string, w = 22): string {
+function sep(label: string, totalW = 26): string {
   const len = [...label].length;
-  const left = "━".repeat(Math.floor((w - len) / 2));
-  const right = "━".repeat(Math.ceil((w - len) / 2));
+  const frame = Math.max(0, totalW - len - 2);
+  const left = "─".repeat(Math.floor(frame / 2));
+  const right = "─".repeat(Math.ceil(frame / 2));
   return left + " " + label + " " + right;
 }
 
@@ -101,7 +102,7 @@ function profileEmb(p: NonNullable<ReturnType<typeof getCachedProfile>>, hasAvat
   const stars = p.stars && p.stars !== "0" ? " · ★×" + p.stars : "";
   const emb = new EmbedBuilder()
     .setColor(ratingColor(p.rating))
-    .setAuthor({ name: sep("━ Profile", 26) })
+    .setAuthor({ name: sep("Profile") })
     .setTitle(p.trophy || "칭호 없음")
     .setDescription(
       `**${p.playerName || "이름 없음"}**  ·  **${p.rating || 0}**\n` +
@@ -134,7 +135,7 @@ function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, view: s
     const kind = r.musicKind ? ` [${r.musicKind}]` : "";
     const emb = new EmbedBuilder()
       .setColor(0x2b2d31)
-      .setAuthor({ name: sep("#" + idx, 18) })
+      .setAuthor({ name: sep("#" + idx) })
       .setTitle(r.title + kind)
       .setDescription(`\`${r.diff} ${r.level}\``)
       .addFields(
