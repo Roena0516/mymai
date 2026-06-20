@@ -1,7 +1,7 @@
 import * as http from "http";
 import * as fs from "fs";
 import { parseHome, parsePlayerData, parseFriendCode as parseFC, parseRecentRecords, parseTop5 } from "./scraper";
-import { cacheProfile, saveUserSession, getUserSyncToken, findUserBySyncToken, saveAvatarBlob, getAvatarBlob } from "./db";
+import { cacheProfile, saveUserSession, getUserSyncToken, findUserBySyncToken, saveAvatarBlob, getAvatarBlob, saveJacket, getJacket } from "./db";
 
 let baseUrl = "";
 export function setBaseUrl(url: string): void { baseUrl = url; }
@@ -17,13 +17,24 @@ var e=document,s=e.currentScript.src,u=new URL(s),c=u.searchParams.get('code')||
 var x=function(a){return fetch(a).then(function(r){return r.text()})};
 var q=['/maimai-mobile/home/','/maimai-mobile/playerData/','/maimai-mobile/record/','/maimai-mobile/friend/userFriendCode/'];
 var r=await Promise.all(q.map(x));
-var h=r[0],p=r[1],rd=r[2],f=r[3],a='';
+var h=r[0],p=r[1],rd=r[2],f=r[3],a='',js=[];
 try{
   var m=h.match(/src="(https:[^"]*Icon[^"]*)"/);
   if(m){var b=await fetch(m[1]).then(function(t){return t.blob()});
   a=await new Promise(function(d){var g=new FileReader();g.onload=function(){d(g.result)};g.readAsDataURL(b)})}
 }catch(e){}
-await fetch(v+'/sync?code='+c,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({h:h,p:p,r:rd,f:f,a:a})});
+try{
+  var dp=new DOMParser(),d2=dp.parseFromString(rd,'text/html');
+  var imgs=d2.querySelectorAll('.music_img');
+  for(var i=0;i<Math.min(imgs.length,5);i++){
+    try{var src=imgs[i].src;if(src){
+      var b2=await fetch(src).then(function(t){return t.blob()});
+      var b64=await new Promise(function(d){var g=new FileReader();g.onload=function(){d(g.result)};g.readAsDataURL(b2)});
+      js.push({url:src,data:b64});
+    }}catch(e2){}
+  }
+}catch(e){}
+await fetch(v+'/sync?code='+c,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({h:h,p:p,r:rd,f:f,a:a,js:js})});
 alert('\\uC644\\uB8CC!')
 })()`;
 
@@ -66,6 +77,19 @@ export function startWebServer(port: number): void {
     if (req.method === "GET" && url.pathname === "/avatar") {
       const uid = url.searchParams.get("user") || "";
       const data = getAvatarBlob(uid);
+      if (data) {
+        res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=3600" });
+        res.end(data);
+      } else {
+        res.writeHead(404); res.end();
+      }
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/jacket") {
+      const uid = url.searchParams.get("user") || "";
+      const idx = parseInt(url.searchParams.get("idx") || "0");
+      const data = getJacket(uid, idx);
       if (data) {
         res.writeHead(200, { "content-type": "image/png", "cache-control": "max-age=3600" });
         res.end(data);
@@ -135,6 +159,11 @@ export function startWebServer(port: number): void {
         if (avatarBase64 && avatarBase64.startsWith("data:")) {
           const m = avatarBase64.match(/^data:image\/\w+;base64,(.+)$/);
           if (m) saveAvatarBlob(userId, m[1]);
+        }
+        // 재킷 이미지 base64 → DB 저장
+        if (Array.isArray(data.js)) {
+          data.js.forEach((j: any, i: number) => { if (j?.data) saveJacket(userId, i, j.data); });
+          console.log(`[web] jackets saved: ${data.js.length} images`);
         }
         console.log(`[web] 저장: ${effective.playerName} ⭐${effective.rating} fc=${fc}`);
         res.writeHead(200); res.end("ok");

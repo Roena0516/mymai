@@ -54,6 +54,13 @@ db.exec(`
     avatar_blob TEXT DEFAULT '',
     updated_at INTEGER DEFAULT (strftime('%s','now') * 1000)
   );
+
+  CREATE TABLE IF NOT EXISTS jackets (
+    user_id TEXT NOT NULL,
+    idx INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    PRIMARY KEY (user_id, idx)
+  );
 `);
 
 // ─── Queries ────────────────────────────────────────────────────────────
@@ -190,4 +197,16 @@ export function getAvatarBlob(userId: string): Buffer | null {
   const row = db.prepare("SELECT avatar_blob FROM sessions WHERE discord_user_id = ?").get(userId) as { avatar_blob: string } | undefined;
   if (!row?.avatar_blob) return null;
   return Buffer.from(row.avatar_blob, "base64");
+}
+
+// ─── Jacket image storage ───────────────────────────────────────────────
+export function saveJacket(userId: string, idx: number, base64Data: string): void {
+  db.prepare("INSERT OR REPLACE INTO jackets (user_id, idx, data) VALUES (?, ?, ?)").run(userId, idx, base64Data);
+}
+
+export function getJacket(userId: string, idx: number): Buffer | null {
+  const row = db.prepare("SELECT data FROM jackets WHERE user_id = ? AND idx = ?").get(userId, idx) as { data: string } | undefined;
+  if (!row?.data) return null;
+  const m = row.data.match(/^data:image\/\w+;base64,(.+)$/);
+  return m ? Buffer.from(m[1], "base64") : null;
 }

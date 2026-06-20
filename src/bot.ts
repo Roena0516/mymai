@@ -1,10 +1,10 @@
 import {
   Client, Events, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, MessageFlags,
-  ChatInputCommandInteraction, REST, Routes, StringSelectMenuBuilder, ActionRowBuilder,
-  StringSelectMenuInteraction, AttachmentBuilder, ButtonBuilder, ButtonStyle, ButtonInteraction,
+  ChatInputCommandInteraction, REST, Routes, ActionRowBuilder,
+  AttachmentBuilder, ButtonBuilder, ButtonStyle, ButtonInteraction,
 } from "discord.js";
 import { initEncryption } from "./crypto";
-import { startWebServer, buildBookmarklet, setBaseUrl } from "./web";
+import { startWebServer, buildBookmarklet, setBaseUrl, getBaseUrl } from "./web";
 import { getCachedProfile, loadUserSession, closeDb, getUserSyncToken, getAvatarBlob } from "./db";
 
 const CONFIG = require("../config.json") as {
@@ -35,7 +35,6 @@ client.once(Events.ClientReady, async (c) => {
 
 client.on(Events.InteractionCreate, async (i) => {
   if (i.isChatInputCommand()) await handleCmd(i);
-  if (i.isStringSelectMenu()) await handleSelect(i);
   if (i.isButton()) await handleButton(i);
 });
 
@@ -91,10 +90,10 @@ function ratingChar(r: number): string {
 }
 
 function sep(label: string, totalW = 26): string {
-  const frame = Math.max(0, totalW - label.length);
+  const frame = Math.max(0, totalW - label.length - 2);
   const left = "─".repeat(Math.floor(frame / 2));
   const right = "─".repeat(Math.ceil(frame / 2));
-  return left + label + right;
+  return left + " " + label + " " + right;
 }
 
 function profileEmb(p: NonNullable<ReturnType<typeof getCachedProfile>>, hasAvatar: boolean) {
@@ -112,20 +111,17 @@ function profileEmb(p: NonNullable<ReturnType<typeof getCachedProfile>>, hasAvat
   return emb;
 }
 
-function getSongList(p: NonNullable<ReturnType<typeof getCachedProfile>>, view: string): any[] {
+function getSongList(p: NonNullable<ReturnType<typeof getCachedProfile>>): any[] {
   const raw = JSON.parse(p.recentJson || "{}");
-  const recent: any[] = Array.isArray(raw) ? raw : (raw.recent || []);
-  const top5: any[] = Array.isArray(raw) ? [] : (raw.top5 || []);
-  if (view === "recent") return recent;
-  if (view === "top5") return top5;
-  return [];
+  return Array.isArray(raw) ? raw : (raw.recent || []);
 }
 
-function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, view: string, page: number): EmbedBuilder[] {
-  const records = getSongList(p, view);
+function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, page: number, userId: string, port: number): EmbedBuilder[] {
+  const records = getSongList(p);
   const pageSize = 3;
   const start = (page - 1) * pageSize;
   const slice = records.slice(start, start + pageSize);
+  const server = getBaseUrl(port);
   if (slice.length === 0) {
     return [new EmbedBuilder().setColor(0x2b2d31).setDescription("기록 없음")];
   }
@@ -141,40 +137,30 @@ function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, view: s
         { name: "달성률", value: r.achievement, inline: true },
         { name: "플레이일", value: r.date || "-", inline: true },
       );
-    if (r.jacketUrl) emb.setImage(r.jacketUrl);
+    emb.setImage(`${server}/jacket?user=${userId}&idx=${start + i}`);
     return emb;
   });
 }
 
 const PAGE_ID = "maimai_page";
 
-function paginationButtons(view: string, page: number, totalRecords: number): ActionRowBuilder<ButtonBuilder> {
+function paginationButtons(page: number, totalRecords: number): ActionRowBuilder<ButtonBuilder> {
   const pageSize = 3;
   const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PAGE_ID}:${view}:${page - 1}`).setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
-    new ButtonBuilder().setCustomId(`${PAGE_ID}:${view}:${page + 1}`).setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages),
+    new ButtonBuilder().setCustomId(`${PAGE_ID}:${page - 1}`).setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
+    new ButtonBuilder().setCustomId(`${PAGE_ID}:${page + 1}`).setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages),
   );
 }
 
-function selectMenu(view: string) {
-  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder().setCustomId("maimai_view").setPlaceholder("보기 선택")
-      .addOptions(
-        { label: "최근 플레이", value: "recent", default: view === "recent" },
-        { label: "TOP 5", value: "top5", default: view === "top5" },
-      ),
-  );
-}
-
-function buildProfileReply(cached: NonNullable<ReturnType<typeof getCachedProfile>>, userId: string, view: string, page = 1) {
+function buildProfileReply(cached: NonNullable<ReturnType<typeof getCachedProfile>>, userId: string, page = 1) {
   const avatar = buildAvatarAttachment(userId);
   const files = avatar ? [avatar] : [];
-  const songs = getSongList(cached, view);
-  const components: any[] = [selectMenu(view)];
-  if (songs.length > 5) components.push(paginationButtons(view, page, songs.length));
+  const songs = getSongList(cached);
+  const components: any[] = [];
+  if (songs.length > 3) components.push(paginationButtons(page, songs.length));
   return {
-    embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, view, page)],
+    embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, page, userId, PORT)],
     components,
     files,
   };
@@ -187,7 +173,7 @@ async function handleCmd(interaction: ChatInputCommandInteraction) {
     if (stored?.friendCode) {
       const cached = getCachedProfile(stored.friendCode);
       if (cached) {
-        await interaction.reply(buildProfileReply(cached, userId, "recent"));
+        await interaction.reply(buildProfileReply(cached, userId));
         return;
       }
     }
@@ -209,26 +195,9 @@ async function handleCmd(interaction: ChatInputCommandInteraction) {
   }
 }
 
-async function handleSelect(interaction: StringSelectMenuInteraction) {
-  if (interaction.customId !== "maimai_view") return;
-  const userId = interaction.user.id;
-  const stored = loadUserSession(userId);
-  if (!stored?.friendCode) { await interaction.reply({ content: "먼저 /북마클릿으로 등록하세요.", flags: MessageFlags.Ephemeral }); return; }
-  const cached = getCachedProfile(stored.friendCode);
-  if (!cached) { await interaction.reply({ content: "데이터 없음.", flags: MessageFlags.Ephemeral }); return; }
-  const view = interaction.values[0];
-  const avatar = buildAvatarAttachment(userId);
-  const files = avatar ? [avatar] : [];
-  const songs = getSongList(cached, view);
-  const components: any[] = [selectMenu(view)];
-  if (songs.length > 5) components.push(paginationButtons(view, 1, songs.length));
-  await interaction.update({ embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, view, 1)], components, files });
-}
-
 async function handleButton(interaction: ButtonInteraction) {
   if (!interaction.customId.startsWith(PAGE_ID + ":")) return;
-  const [_, view, pageStr] = interaction.customId.split(":");
-  const page = parseInt(pageStr) || 1;
+  const page = parseInt(interaction.customId.split(":")[1]) || 1;
   const userId = interaction.user.id;
   const stored = loadUserSession(userId);
   if (!stored?.friendCode) { await interaction.reply({ content: "먼저 /북마클릿으로 등록하세요.", flags: MessageFlags.Ephemeral }); return; }
@@ -236,10 +205,10 @@ async function handleButton(interaction: ButtonInteraction) {
   if (!cached) { await interaction.reply({ content: "데이터 없음.", flags: MessageFlags.Ephemeral }); return; }
   const avatar = buildAvatarAttachment(userId);
   const files = avatar ? [avatar] : [];
-  const songs = getSongList(cached, view);
-  const components: any[] = [selectMenu(view)];
-  if (songs.length > 5) components.push(paginationButtons(view, page, songs.length));
-  await interaction.update({ embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, view, page)], components, files });
+  const songs = getSongList(cached);
+  const components: any[] = [];
+  if (songs.length > 3) components.push(paginationButtons(page, songs.length));
+  await interaction.update({ embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, page, userId, PORT)], components, files });
 }
 
 process.on("SIGINT", () => { closeDb(); process.exit(0); });
