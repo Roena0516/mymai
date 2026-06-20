@@ -1,7 +1,7 @@
 import {
   Client, Events, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, MessageFlags,
-  ChatInputCommandInteraction, REST, Routes, ActionRowBuilder,
-  AttachmentBuilder, ButtonBuilder, ButtonStyle, ButtonInteraction,
+  ChatInputCommandInteraction, REST, Routes,
+  AttachmentBuilder,
 } from "discord.js";
 import { initEncryption } from "./crypto";
 import { startWebServer, buildBookmarklet, setBaseUrl, getBaseUrl } from "./web";
@@ -35,27 +35,7 @@ client.once(Events.ClientReady, async (c) => {
 
 client.on(Events.InteractionCreate, async (i) => {
   if (i.isChatInputCommand()) await handleCmd(i);
-  if (i.isButton()) await handleButton(i);
 });
-
-const TICON: Record<string, string> = { normal: "⚪", bronze: "🟤", silver: "⚪", gold: "🟡", rainbow: "🌈" };
-const TCOLOR: Record<string, number> = { normal: 0x808080, bronze: 0xcd7f32, silver: 0xc0c0c0, gold: 0xffd700, rainbow: 0x8b00ff };
-
-function parseGradeText(gradeImg: string): string {
-  if (!gradeImg) return "";
-  const url = gradeImg.toLowerCase();
-  if (url.includes("/course/")) {
-    const name = decodeURIComponent(gradeImg.split("/").pop()?.split(".")[0] || "");
-    return "코스 " + name.replace(/^course_rank_/i, "").substring(0, 6);
-  }
-  if (url.includes("/class/")) {
-    const name = decodeURIComponent(gradeImg.split("/").pop()?.split(".")[0] || "");
-    return "클래스 " + name.replace(/^class_rank_s_/i, "").substring(0, 6);
-  }
-  const name = decodeURIComponent(gradeImg.split("/").pop()?.split(".")[0] || "");
-  const cleaned = name.replace(/^(grade_|class_|dan_|course_rank_|class_rank_)/i, "");
-  return cleaned.length < 20 ? cleaned.toUpperCase() : "";
-}
 
 function buildAvatarAttachment(userId: string): AttachmentBuilder | null {
   const buf = getAvatarBlob(userId);
@@ -74,19 +54,6 @@ function ratingColor(r: number): number {
   if (r >= 4000)  return 0x5fba63;  // 🟢 green
   if (r >= 2000)  return 0x4d9eea;  // 🔵 blue
   return 0x95a5a6;                   // ⚪ silver-white
-}
-
-function ratingChar(r: number): string {
-  if (r >= 15000) return "🌈";
-  if (r >= 14000) return "🟡";
-  if (r >= 13000) return "⚪";
-  if (r >= 12000) return "🟤";
-  if (r >= 10000) return "🟣";
-  if (r >= 8000)  return "🔴";
-  if (r >= 6000)  return "🟠";
-  if (r >= 4000)  return "🟢";
-  if (r >= 2000)  return "🔵";
-  return "⚪";
 }
 
 function sep(label: string, totalW = 36): string {
@@ -116,52 +83,35 @@ function getSongList(p: NonNullable<ReturnType<typeof getCachedProfile>>): any[]
   return Array.isArray(raw) ? raw : (raw.recent || []);
 }
 
-function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, page: number, userId: string, port: number): EmbedBuilder[] {
+function songEmbeds(p: NonNullable<ReturnType<typeof getCachedProfile>>, userId: string, port: number): EmbedBuilder[] {
   const records = getSongList(p);
-  const pageSize = 3;
-  const start = (page - 1) * pageSize;
-  const slice = records.slice(start, start + pageSize);
   const server = getBaseUrl(port);
-  if (slice.length === 0) {
+  if (records.length === 0) {
     return [new EmbedBuilder().setColor(0x2b2d31).setDescription("기록 없음")];
   }
+  const pageSize = records[0]?.track || 3;
+  const slice = records.slice(0, pageSize);
   return slice.map((r: any, i: number) => {
-    const idx = start + i + 1;
     const kind = r.musicKind ? ` [${r.musicKind}]` : "";
     const emb = new EmbedBuilder()
       .setColor(0x2b2d31)
-      .setAuthor({ name: sep("#" + idx, 34) })
+      .setAuthor({ name: sep("#" + (i + 1), 34) })
       .setTitle(r.title + kind)
       .setDescription(`\`${r.diff} ${r.level}\``)
       .addFields(
         { name: "달성률", value: r.achievement, inline: true },
         { name: "플레이일", value: r.date || "-", inline: true },
       );
-    emb.setThumbnail(`${server}/jacket?user=${userId}&idx=${start + i}`);
+    emb.setThumbnail(`${server}/jacket?user=${userId}&idx=${i}`);
     return emb;
   });
 }
 
-const PAGE_ID = "maimai_page";
-
-function paginationButtons(page: number, totalRecords: number): ActionRowBuilder<ButtonBuilder> {
-  const pageSize = 3;
-  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`${PAGE_ID}:${page - 1}`).setLabel("◀ 이전").setStyle(ButtonStyle.Secondary).setDisabled(page <= 1),
-    new ButtonBuilder().setCustomId(`${PAGE_ID}:${page + 1}`).setLabel("다음 ▶").setStyle(ButtonStyle.Secondary).setDisabled(page >= totalPages),
-  );
-}
-
-function buildProfileReply(cached: NonNullable<ReturnType<typeof getCachedProfile>>, userId: string, page = 1) {
+function buildProfileReply(cached: NonNullable<ReturnType<typeof getCachedProfile>>, userId: string) {
   const avatar = buildAvatarAttachment(userId);
   const files = avatar ? [avatar] : [];
-  const songs = getSongList(cached);
-  const components: any[] = [];
-  if (songs.length > 3) components.push(paginationButtons(page, songs.length));
   return {
-    embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, page, userId, PORT)],
-    components,
+    embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, userId, PORT)],
     files,
   };
 }
@@ -193,22 +143,6 @@ async function handleCmd(interaction: ChatInputCommandInteraction) {
     });
     return;
   }
-}
-
-async function handleButton(interaction: ButtonInteraction) {
-  if (!interaction.customId.startsWith(PAGE_ID + ":")) return;
-  const page = parseInt(interaction.customId.split(":")[1]) || 1;
-  const userId = interaction.user.id;
-  const stored = loadUserSession(userId);
-  if (!stored?.friendCode) { await interaction.reply({ content: "먼저 /북마클릿으로 등록하세요.", flags: MessageFlags.Ephemeral }); return; }
-  const cached = getCachedProfile(stored.friendCode);
-  if (!cached) { await interaction.reply({ content: "데이터 없음.", flags: MessageFlags.Ephemeral }); return; }
-  const avatar = buildAvatarAttachment(userId);
-  const files = avatar ? [avatar] : [];
-  const songs = getSongList(cached);
-  const components: any[] = [];
-  if (songs.length > 3) components.push(paginationButtons(page, songs.length));
-  await interaction.update({ embeds: [profileEmb(cached, !!avatar), ...songEmbeds(cached, page, userId, PORT)], components, files });
 }
 
 process.on("SIGINT", () => { closeDb(); process.exit(0); });

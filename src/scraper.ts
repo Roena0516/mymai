@@ -71,6 +71,7 @@ export interface PlayRecord {
   jacketUrl: string;
   musicKind: string;
   achievementVal: number;
+  track: number;
 }
 
 function parseOneRecord($: cheerio.CheerioAPI, el: any): PlayRecord | null {
@@ -88,7 +89,9 @@ function parseOneRecord($: cheerio.CheerioAPI, el: any): PlayRecord | null {
   const kindSrc = $(el).find(".playlog_music_kind_icon").attr("src") || "";
   const musicKind = kindSrc.includes("dx") ? "DX" : kindSrc.includes("standard") ? "STA" : "";
   const date = $(el).find(".playlog_top_container span").eq(1).text().trim();
-  return { title, achievement: ach || "?", diff, level, date, jacketUrl, musicKind, achievementVal: achNum };
+  const trackText = $(el).find(".playlog_top_container .red.f_b.v_b").text().trim();
+  const track = parseInt(trackText.replace(/[^0-9]/g, "")) || 0;
+  return { title, achievement: ach || "?", diff, level, date, jacketUrl, musicKind, achievementVal: achNum, track };
 }
 
 export function parseRecentRecords(html: string): PlayRecord[] {
