@@ -1,4 +1,4 @@
-# 🎵 maimaiDISCORD
+# 🎵 mymai
 
 **maimai DX NET** 프로필을 Discord에서 확인하는 봇입니다.
 

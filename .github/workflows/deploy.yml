@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_BASE: maimai-bot
+  IMAGE_BASE: mymai
 
 jobs:
   build-and-push:

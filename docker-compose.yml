@@ -1,7 +1,7 @@
 services:
   bot:
-    image: ghcr.io/bitbyte08/maimai-bot:latest
-    container_name: maimai-bot
+    image: ghcr.io/bitbyte08/mymai:latest
+    container_name: mymai-bot
     restart: unless-stopped
     volumes:
       - ./data:/app/data
@@ -14,7 +14,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    container_name: maimai-tunnel
+    container_name: mymai-tunnel
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
