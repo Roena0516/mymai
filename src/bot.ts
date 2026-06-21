@@ -23,9 +23,7 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`[maimai] ${c.user.tag}`);
   const rest = new REST({ version: "10" }).setToken(CONFIG.token);
   await rest.put(
-    CONFIG.guildId
-      ? Routes.applicationGuildCommands(CONFIG.clientId, CONFIG.guildId)
-      : Routes.applicationCommands(CONFIG.clientId),
+    Routes.applicationCommands(CONFIG.clientId),
     { body: COMMANDS.map((cmd) => cmd.data.toJSON()) },
   );
   console.log("[maimai] 준비 완료");
