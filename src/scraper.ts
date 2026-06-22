@@ -106,7 +106,7 @@ function parseOneRecord($: cheerio.CheerioAPI, el: any): PlayRecord | null {
   const jacketUrl = absUrl($(el).find(".music_img").attr("src"));
   const kindSrc = $(el).find(".playlog_music_kind_icon").attr("src") || "";
   const kindFile = kindSrc.split("/").pop() || "";
-  const musicKind = kindFile.includes("_dx") ? "DX" : kindFile.includes("_standard") ? "STA" : "";
+  const musicKind = kindFile.includes("_dx") ? "DX" : kindFile.includes("_standard") ? "ST" : "";
   const date = $(el).find(".playlog_top_container span").eq(1).text().trim();
   const trackText = $(el).find(".playlog_top_container .red.f_b.v_b").text().trim();
   const track = parseInt(trackText.replace(/[^0-9]/g, "")) || 0;
@@ -149,7 +149,7 @@ export function parseRatingTarget(html: string): PlayRecord[] {
     const diffImg = (block.find("img").first().attr("src") || "").split("/").pop() || "";
     const diff = diffMap[diffImg] || "";
     const kindImg = (block.find(".music_kind_icon").attr("src") || "").split("/").pop() || "";
-    const musicKind = kindImg.includes("_dx") ? "DX" : kindImg.includes("_standard") ? "STD" : "";
+    const musicKind = kindImg.includes("_dx") ? "DX" : kindImg.includes("_standard") ? "ST" : "";
     const musicId = block.find("input[name='idx']").val() as string | undefined;
     const jacketUrl = musicId ? `https://maimaidx-eng.com/maimai-mobile/img/Music/${musicId}.png` : "";
     const achMatch = achievement.match(/(\d+\.\d+)/);
