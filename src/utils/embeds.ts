@@ -2,11 +2,35 @@ import {
   EmbedBuilder, AttachmentBuilder,
   ButtonBuilder, ButtonStyle, ActionRowBuilder,
 } from "discord.js";
-import { getCachedProfile, getAvatarBlob } from "../db";
-import { getBaseUrl } from "../web";
-import { getConstant } from "../constants";
+import { getCachedProfile, getAvatarBlob, getSongJacket, saveSongJacket } from "../db";
+import { getConstant, getJacketFile } from "../constants";
 import { ratingColor } from "./roles";
 import type { PlayRecord } from "../scraper";
+
+// 곡 자켓 버퍼: DB 캐시 → maimai net(musicId) → otoge-db(title) 순으로 확보하고 캐시
+export async function jacketBuffer(r: PlayRecord): Promise<Buffer | null> {
+  const m = r.jacketUrl?.match(/\/img\/Music\/([^.]+)\.png/);
+  const musicId = m ? m[1] : null;
+  if (musicId) {
+    const cached = getSongJacket(musicId);
+    if (cached) return cached;
+    try {
+      const res = await fetch(`https://maimaidx-eng.com/maimai-mobile/img/Music/${musicId}.png`);
+      if (res.ok) { const b = Buffer.from(await res.arrayBuffer()); saveSongJacket(musicId, b); return b; }
+    } catch { /* ignore */ }
+  }
+  const file = getJacketFile(r.title);
+  if (file) {
+    const key = file.replace(/\.png$/, "");
+    const cached = getSongJacket(key);
+    if (cached) return cached;
+    try {
+      const res = await fetch(`https://otoge-db.net/maimai/jacket/${file}`);
+      if (res.ok) { const b = Buffer.from(await res.arrayBuffer()); saveSongJacket(key, b); return b; }
+    } catch { /* ignore */ }
+  }
+  return null;
+}
 
 export function sep(label: string, totalW = 36): string {
   const frame = Math.max(0, totalW - label.length - 2);
@@ -101,12 +125,11 @@ export function groupByGame(records: PlayRecord[]): PlayRecord[][] {
   return games;
 }
 
-export function recentEmbeds(
+export async function recentEmbeds(
   p: NonNullable<ReturnType<typeof getCachedProfile>>,
   userId: string,
-  port: number,
   gameIdx: number,
-): { embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[] } {
+): Promise<{ embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[]; files: AttachmentBuilder[] }> {
   const records = getSongList(p);
   const games = groupByGame(records);
   const total = games.length;
@@ -115,17 +138,16 @@ export function recentEmbeds(
     return {
       embeds: [new EmbedBuilder().setColor(0x2b2d31).setDescription("기록 없음")],
       components: [],
+      files: [],
     };
   }
 
   const idx = Math.max(0, Math.min(gameIdx, total - 1));
   const game = games[idx];
-  const server = getBaseUrl(port);
+  const files: AttachmentBuilder[] = [];
 
-  const embeds = game.map((r, i) => {
+  const embeds = await Promise.all(game.map(async (r, i) => {
     const kind = r.musicKind ? ` [${r.musicKind}]` : "";
-    const musicIdMatch = r.jacketUrl?.match(/\/img\/Music\/([^.]+)\.png/);
-    const jacketSrc = musicIdMatch ? `${server}/jacket?id=${musicIdMatch[1]}` : null;
     const rankStr = [r.fc, r.sync].filter(Boolean).join(" · ");
     const constant = getConstant(r.title, r.musicKind, r.diff);
     const lv = constant !== null ? constant.toFixed(1) : r.level;
@@ -139,9 +161,14 @@ export function recentEmbeds(
         { name: "달성률", value: r.achievement, inline: true },
         { name: "플레이일", value: r.date || "-", inline: true },
       );
-    if (jacketSrc) emb.setThumbnail(jacketSrc);
+    const buf = await jacketBuffer(r);
+    if (buf) {
+      const name = `jacket${i}.png`;
+      files.push(new AttachmentBuilder(buf, { name }));
+      emb.setThumbnail(`attachment://${name}`);
+    }
     return emb;
-  });
+  }));
 
   const prevBtn = new ButtonBuilder()
     .setCustomId(`page:${userId}:${idx - 1}`)
@@ -170,7 +197,7 @@ export function recentEmbeds(
     ),
   );
 
-  return { embeds, components: [navRow, shareRow] };
+  return { embeds, components: [navRow, shareRow], files };
 }
 
 const DIFF_ABBR: Record<string, string> = {

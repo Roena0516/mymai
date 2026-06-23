@@ -62,7 +62,7 @@ client.on(Events.InteractionCreate, async (i) => {
         if (!stored?.friendCode) { await (i as ButtonInteraction).reply({ content: "프로필을 먼저 등록하세요.", ephemeral: true }); return; }
         const cached = getCachedProfile(stored.friendCode);
         if (!cached) { await (i as ButtonInteraction).reply({ content: "프로필을 먼저 등록하세요.", ephemeral: true }); return; }
-        const result = recentEmbeds(cached, userId, PORT, gameIdx);
+        const result = await recentEmbeds(cached, userId, gameIdx);
         if (i.customId.startsWith("recent:")) {
           await (i as ButtonInteraction).reply({ ...result, ephemeral: true });
         } else {
@@ -83,11 +83,12 @@ client.on(Events.InteractionCreate, async (i) => {
         if (!stored?.friendCode) { await (i as ButtonInteraction).reply({ content: "프로필을 찾을 수 없습니다.", ephemeral: true }); return; }
         const cached = getCachedProfile(stored.friendCode);
         if (!cached) { await (i as ButtonInteraction).reply({ content: "프로필을 찾을 수 없습니다.", ephemeral: true }); return; }
-        const result = recentEmbeds(cached, targetUserId, PORT, gameIdx);
+        const result = await recentEmbeds(cached, targetUserId, gameIdx);
         const emb = result.embeds[songIdx];
         if (!emb) { await (i as ButtonInteraction).reply({ content: "곡을 찾을 수 없습니다.", ephemeral: true }); return; }
         emb.setFooter({ text: `${cached.playerName}의 플레이  ·  공유: ${i.user.username}` });
-        await (i as ButtonInteraction).reply({ embeds: [emb] });
+        const file = result.files.find((f) => f.name === `jacket${songIdx}.png`);
+        await (i as ButtonInteraction).reply({ embeds: [emb], files: file ? [file] : [] });
       } catch (e) {
         console.error("[share-btn]", e);
       }
