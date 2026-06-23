@@ -6,15 +6,17 @@ import { CONFIG, PORT } from "./config";
 import { recentEmbeds, rtTableEmbed } from "./utils/embeds";
 
 import { loadConstants } from "./constants";
+import { loadFonts } from "./fonts";
 
-import * as profile     from "./commands/profile";
-import * as bookmarklet from "./commands/bookmarklet";
-import * as ratingtable from "./commands/ratingtable";
-import * as settings    from "./commands/settings";
+import * as profile      from "./commands/profile";
+import * as bookmarklet  from "./commands/bookmarklet";
+import * as ratingtable  from "./commands/ratingtable";
+import * as ratingimage  from "./commands/ratingimage";
+import * as settings     from "./commands/settings";
 
 type Command = { data: { toJSON(): object; name: string }; execute: (i: ChatInputCommandInteraction) => Promise<void> };
 
-const COMMANDS: Command[] = [profile, bookmarklet, ratingtable, settings];
+const COMMANDS: Command[] = [profile, bookmarklet, ratingtable, ratingimage, settings];
 
 initEncryption(CONFIG.encryptionKey);
 if (CONFIG.baseUrl) setBaseUrl(CONFIG.baseUrl);
@@ -31,6 +33,7 @@ client.once(Events.ClientReady, async (c) => {
   await rest.put(route, { body: COMMANDS.map((cmd) => cmd.data.toJSON()) });
   await loadConstants();
   setInterval(() => loadConstants(), 24 * 60 * 60 * 1000);
+  loadFonts().catch((e) => console.error("[fonts] 초기 로드 실패:", e));
   console.log("[maimai] 준비 완료");
 });
 
