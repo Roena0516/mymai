@@ -18,4 +18,4 @@ COPY --from=build /app/dist/ ./dist/
 VOLUME ["/app/data"]
 ENV NODE_ENV=production
 ENV DATA_DIR=/app/data
-CMD ["node", "dist/bot.js"]
+CMD ["node", "dist/bot/index.js"]
