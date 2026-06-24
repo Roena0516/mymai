@@ -33,6 +33,7 @@ export async function jacketBuffer(r: PlayRecord): Promise<Buffer | null> {
 }
 
 export function sep(label: string, totalW = 36): string {
+  if (!label) return "─".repeat(totalW);
   const frame = Math.max(0, totalW - label.length - 2);
   const left = "─".repeat(Math.floor(frame / 2));
   const right = "─".repeat(Math.ceil(frame / 2));
