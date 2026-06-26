@@ -79,8 +79,9 @@ export interface PlayRecord {
 const FC_LABELS: Record<string, string> = {
   fc: "FC", fcp: "FC+", ap: "AP", app: "AP+",
 };
+// 실제 아이콘 파일명 기준: music_icon_sync / fs / fsp / fdx / fdxp
 const SYNC_LABELS: Record<string, string> = {
-  fs: "FS", fsp: "FS+", fsd: "FSD", fsdp: "FSD+",
+  sync: "SYNC", fs: "FS", fsp: "FS+", fdx: "FDX", fdxp: "FDX+",
 };
 
 function iconName(src: string): string {
@@ -149,7 +150,8 @@ export function parseMusicScore(html: string): PlayRecord[] {
     const allImgs = block.find("img");
     const diffImg = (allImgs.eq(0).attr("src") || "").split("/").pop() || "";
     const diff = diffMap[diffImg] || "";
-    const kindImg = (block.find(".music_kind_icon").attr("src") || "").split("/").pop() || "";
+    // .music_kind_icon은 _score_back 블록의 형제(부모 .w_450 래퍼의 자식)이므로 parent에서 탐색
+    const kindImg = (block.parent().find(".music_kind_icon").attr("src") || "").split("/").pop() || "";
     const musicKind = kindImg.includes("_dx") ? "DX" : kindImg.includes("_standard") ? "ST" : "";
     const musicId = block.find("input[name='idx']").val() as string | undefined;
     const jacketUrl = musicId ? `https://maimaidx-eng.com/maimai-mobile/img/Music/${musicId}.png` : "";
@@ -190,7 +192,8 @@ export function mergeTopRecords(recordsList: PlayRecord[][]): PlayRecord[] {
   const best = new Map<string, PlayRecord>();
   for (const records of recordsList) {
     for (const r of records) {
-      const key = r.title + "|" + r.diff;
+      // ST/DX는 같은 title+diff라도 별개 채보이므로 musicKind를 키에 포함
+      const key = r.title + "|" + r.musicKind + "|" + r.diff;
       const existing = best.get(key);
       if (!existing || r.achievementVal > existing.achievementVal) best.set(key, r);
     }
