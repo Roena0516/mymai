@@ -1,9 +1,23 @@
 import {
-  EmbedBuilder, AttachmentBuilder,
-  ButtonBuilder, ButtonStyle, ActionRowBuilder,
+  EmbedBuilder,
+  AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ActionRowBuilder,
 } from "discord.js";
-import { getCachedProfile, getAvatarBlob, getSongJacket, saveSongJacket } from "../../db";
-import { getConstant, getJacketFile, levelToNumber, calcSongRating } from "../../constants";
+import {
+  getCachedProfile,
+  getAvatarBlob,
+  getSongJacket,
+  saveSongJacket,
+} from "../../db";
+import {
+  getConstant,
+  getJacketFile,
+  levelToNumber,
+  calcSongRating,
+} from "../../constants";
+import { aliasMatches, normalizeQuery } from "../../aliases";
 import { ratingColor } from "./roles";
 import type { PlayRecord } from "../../scraper";
 
@@ -15,9 +29,17 @@ export async function jacketBuffer(r: PlayRecord): Promise<Buffer | null> {
     const cached = getSongJacket(musicId);
     if (cached) return cached;
     try {
-      const res = await fetch(`https://maimaidx-eng.com/maimai-mobile/img/Music/${musicId}.png`);
-      if (res.ok) { const b = Buffer.from(await res.arrayBuffer()); saveSongJacket(musicId, b); return b; }
-    } catch { /* ignore */ }
+      const res = await fetch(
+        `https://maimaidx-eng.com/maimai-mobile/img/Music/${musicId}.png`,
+      );
+      if (res.ok) {
+        const b = Buffer.from(await res.arrayBuffer());
+        saveSongJacket(musicId, b);
+        return b;
+      }
+    } catch {
+      /* ignore */
+    }
   }
   const file = getJacketFile(r.title);
   if (file) {
@@ -26,8 +48,14 @@ export async function jacketBuffer(r: PlayRecord): Promise<Buffer | null> {
     if (cached) return cached;
     try {
       const res = await fetch(`https://otoge-db.net/maimai/jacket/${file}`);
-      if (res.ok) { const b = Buffer.from(await res.arrayBuffer()); saveSongJacket(key, b); return b; }
-    } catch { /* ignore */ }
+      if (res.ok) {
+        const b = Buffer.from(await res.arrayBuffer());
+        saveSongJacket(key, b);
+        return b;
+      }
+    } catch {
+      /* ignore */
+    }
   }
   return null;
 }
@@ -43,19 +71,19 @@ export function sep(label: string, totalW = 36): string {
 function isFullWidth(ch: string): boolean {
   const code = ch.codePointAt(0) || 0;
   return (
-    (code >= 0x1100 && code <= 0x115F) ||
-    (code >= 0x2E80 && code <= 0x303E) ||
-    (code >= 0x3041 && code <= 0x33FF) ||
-    (code >= 0x3400 && code <= 0x4DBF) ||
-    (code >= 0x4E00 && code <= 0x9FFF) ||
-    (code >= 0xA000 && code <= 0xA4CF) ||
-    (code >= 0xAC00 && code <= 0xD7A3) ||
-    (code >= 0xF900 && code <= 0xFAFF) ||
-    (code >= 0xFE30 && code <= 0xFE4F) ||
-    (code >= 0xFF00 && code <= 0xFF60) ||
-    (code >= 0xFFE0 && code <= 0xFFE6) ||
-    (code >= 0x20000 && code <= 0x2FFFD) ||
-    (code >= 0x30000 && code <= 0x3FFFD)
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2e80 && code <= 0x303e) ||
+    (code >= 0x3041 && code <= 0x33ff) ||
+    (code >= 0x3400 && code <= 0x4dbf) ||
+    (code >= 0x4e00 && code <= 0x9fff) ||
+    (code >= 0xa000 && code <= 0xa4cf) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe30 && code <= 0xfe4f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6) ||
+    (code >= 0x20000 && code <= 0x2fffd) ||
+    (code >= 0x30000 && code <= 0x3fffd)
   );
 }
 
@@ -85,7 +113,9 @@ function songRating(r: PlayRecord): number {
   return calcSongRating(r.achievementVal, lvNum);
 }
 
-export function buildAvatarAttachment(userId: string): AttachmentBuilder | null {
+export function buildAvatarAttachment(
+  userId: string,
+): AttachmentBuilder | null {
   const buf = getAvatarBlob(userId);
   if (!buf) return null;
   return new AttachmentBuilder(buf, { name: "avatar.png" });
@@ -102,24 +132,32 @@ export function profileEmb(
     .setTitle(p.trophy || "칭호 없음")
     .setDescription(
       `**${p.playerName || "이름 없음"}**  ·  **${p.rating || 0}**\n` +
-      `플레이 ${p.playCount || 0}회${stars}`,
+        `플레이 ${p.playCount || 0}회${stars}`,
     )
-    .setFooter({ text: `마지막 동기화: ${new Date(p.lastSyncedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}` });
+    .setFooter({
+      text: `마지막 동기화: ${new Date(p.lastSyncedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}`,
+    });
   if (hasAvatar) emb.setThumbnail("attachment://avatar.png");
   return emb;
 }
 
-export function getSongList(p: NonNullable<ReturnType<typeof getCachedProfile>>): PlayRecord[] {
+export function getSongList(
+  p: NonNullable<ReturnType<typeof getCachedProfile>>,
+): PlayRecord[] {
   const raw = JSON.parse(p.recentJson || "{}");
-  return Array.isArray(raw) ? raw : (raw.recent || []);
+  return Array.isArray(raw) ? raw : raw.recent || [];
 }
 
-export function getTopList(p: NonNullable<ReturnType<typeof getCachedProfile>>): PlayRecord[] {
+export function getTopList(
+  p: NonNullable<ReturnType<typeof getCachedProfile>>,
+): PlayRecord[] {
   const raw = JSON.parse(p.topJson || "[]");
   return Array.isArray(raw) ? raw : [];
 }
 
-export function getClearList(p: NonNullable<ReturnType<typeof getCachedProfile>>): PlayRecord[] {
+export function getClearList(
+  p: NonNullable<ReturnType<typeof getCachedProfile>>,
+): PlayRecord[] {
   const raw = JSON.parse(p.clearJson || "[]");
   return Array.isArray(raw) ? raw : [];
 }
@@ -142,14 +180,20 @@ export async function recentEmbeds(
   p: NonNullable<ReturnType<typeof getCachedProfile>>,
   userId: string,
   gameIdx: number,
-): Promise<{ embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[]; files: AttachmentBuilder[] }> {
+): Promise<{
+  embeds: EmbedBuilder[];
+  components: ActionRowBuilder<ButtonBuilder>[];
+  files: AttachmentBuilder[];
+}> {
   const records = getSongList(p);
   const games = groupByGame(records);
   const total = games.length;
 
   if (total === 0) {
     return {
-      embeds: [new EmbedBuilder().setColor(0x2b2d31).setDescription("기록 없음")],
+      embeds: [
+        new EmbedBuilder().setColor(0x2b2d31).setDescription("기록 없음"),
+      ],
       components: [],
       files: [],
     };
@@ -159,29 +203,32 @@ export async function recentEmbeds(
   const game = games[idx];
   const files: AttachmentBuilder[] = [];
 
-  const embeds = await Promise.all(game.map(async (r, i) => {
-    const kind = r.musicKind ? ` [${r.musicKind}]` : "";
-    const rankStr = [r.fc, r.sync].filter(Boolean).join(" · ");
-    const constant = getConstant(r.title, r.musicKind, r.diff);
-    const lv = constant !== null ? constant.toFixed(1) : r.level;
-    const desc = `\`${r.diff} ${lv}\`` + (rankStr ? `  ·  \`${rankStr}\`` : "");
-    const emb = new EmbedBuilder()
-      .setColor(0x2b2d31)
-      .setAuthor({ name: sep("#" + (i + 1), 34) })
-      .setTitle(truncateVisual(r.title, 26) + kind)
-      .setDescription(desc)
-      .addFields(
-        { name: "달성률", value: r.achievement, inline: true },
-        { name: "플레이일", value: r.date || "-", inline: true },
-      );
-    const buf = await jacketBuffer(r);
-    if (buf) {
-      const name = `jacket${i}.png`;
-      files.push(new AttachmentBuilder(buf, { name }));
-      emb.setThumbnail(`attachment://${name}`);
-    }
-    return emb;
-  }));
+  const embeds = await Promise.all(
+    game.map(async (r, i) => {
+      const kind = r.musicKind ? ` [${r.musicKind}]` : "";
+      const rankStr = [r.fc, r.sync].filter(Boolean).join(" · ");
+      const constant = getConstant(r.title, r.musicKind, r.diff);
+      const lv = constant !== null ? constant.toFixed(1) : r.level;
+      const desc =
+        `\`${r.diff} ${lv}\`` + (rankStr ? `  ·  \`${rankStr}\`` : "");
+      const emb = new EmbedBuilder()
+        .setColor(0x2b2d31)
+        .setAuthor({ name: sep("#" + (i + 1), 34) })
+        .setTitle(truncateVisual(r.title, 26) + kind)
+        .setDescription(desc)
+        .addFields(
+          { name: "달성률", value: r.achievement, inline: true },
+          { name: "플레이일", value: r.date || "-", inline: true },
+        );
+      const buf = await jacketBuffer(r);
+      if (buf) {
+        const name = `jacket${i}.png`;
+        files.push(new AttachmentBuilder(buf, { name }));
+        emb.setThumbnail(`attachment://${name}`);
+      }
+      return emb;
+    }),
+  );
 
   const prevBtn = new ButtonBuilder()
     .setCustomId(`page:${userId}:${idx - 1}`)
@@ -199,7 +246,11 @@ export async function recentEmbeds(
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(idx === total - 1);
 
-  const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevBtn, countBtn, nextBtn);
+  const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    prevBtn,
+    countBtn,
+    nextBtn,
+  );
 
   const shareRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     game.map((_, si) =>
@@ -218,61 +269,115 @@ export async function searchResultEmbeds(
   userId: string,
   query: string,
   pageIdx: number,
-): Promise<{ embeds: EmbedBuilder[]; components: ActionRowBuilder<ButtonBuilder>[]; files: AttachmentBuilder[] }> {
+): Promise<{
+  embeds: EmbedBuilder[];
+  components: ActionRowBuilder<ButtonBuilder>[];
+  files: AttachmentBuilder[];
+}> {
   const records = getClearList(p);
-  const q = query.toLowerCase();
-  const byTitle = new Map<string, PlayRecord[]>();
+  const q = normalizeQuery(query);
+  // 같은 곡명이라도 ST/DX 채보는 별도 결과로 분리 (musicKind 포함 키로 그룹핑)
+  const byChart = new Map<string, PlayRecord[]>();
   for (const r of records) {
-    if (!r.title.toLowerCase().includes(q)) continue;
-    const arr = byTitle.get(r.title) ?? [];
+    // 곡명 또는 별명(NeonDB)에 부분 일치
+    if (!normalizeQuery(r.title).includes(q) && !aliasMatches(r.title, q))
+      continue;
+    const key = `${r.title} ${r.musicKind || ""}`;
+    const arr = byChart.get(key) ?? [];
     arr.push(r);
-    byTitle.set(r.title, arr);
+    byChart.set(key, arr);
   }
-  const titles = Array.from(byTitle.entries())
-    .sort(([, a], [, b]) => Math.max(...b.map((r) => r.achievementVal)) - Math.max(...a.map((r) => r.achievementVal)))
-    .map(([t]) => t);
+  const keys = Array.from(byChart.entries())
+    .sort(([, a], [, b]) => {
+      // 곡명이 검색어와 완전 일치하는 곡을 최상단으로
+      const exactA = normalizeQuery(a[0].title) === q ? 1 : 0;
+      const exactB = normalizeQuery(b[0].title) === q ? 1 : 0;
+      if (exactA !== exactB) return exactB - exactA;
+      return (
+        Math.max(...b.map((r) => r.achievementVal)) -
+        Math.max(...a.map((r) => r.achievementVal))
+      );
+    })
+    .map(([k]) => k);
 
-  if (titles.length === 0) {
+  if (keys.length === 0) {
     return {
-      embeds: [new EmbedBuilder().setColor(0x2b2d31).setDescription(`"${query}" 검색 결과 없음`)],
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x2b2d31)
+          .setDescription(`"${query}" 검색 결과 없음`),
+      ],
       components: [],
       files: [],
     };
   }
 
-  const PAGE_SIZE = 5;
-  const totalPages = Math.max(1, Math.ceil(titles.length / PAGE_SIZE));
+  const PAGE_SIZE = 2;
+  const totalPages = Math.max(1, Math.ceil(keys.length / PAGE_SIZE));
   const idx = Math.max(0, Math.min(pageIdx, totalPages - 1));
-  const pageTitles = titles.slice(idx * PAGE_SIZE, (idx + 1) * PAGE_SIZE);
+  const pageKeys = keys.slice(idx * PAGE_SIZE, (idx + 1) * PAGE_SIZE);
   const files: AttachmentBuilder[] = [];
 
   const DIFF_ORDER = ["BASIC", "ADVANCED", "EXPERT", "MASTER", "Re:MASTER"];
 
-  const embeds = await Promise.all(pageTitles.map(async (title, i) => {
-    const all = byTitle.get(title) ?? [];
-    const kind = all[0]?.musicKind ? ` [${all[0].musicKind}]` : "";
-    const lines = DIFF_ORDER.map((d) => {
-      const r = all.find((x) => x.diff === d);
-      const constant = getConstant(title, all[0]?.musicKind, d);
-      const lv = constant !== null ? constant.toFixed(1) : (r?.level ?? "?");
-      const ach = r && r.achievementVal > 0 ? r.achievementVal.toFixed(4) + "%" : "?";
-      const fc = r?.fc || "-";
-      const sync = r?.sync || "-";
-      return `${d.padEnd(9)} ${ach.padStart(9)}  ${String(lv).padStart(4)}  ${fc.padStart(4)}  ${sync.padStart(4)}`;
-    });
-    const buf = await jacketBuffer(all[0] ?? ({ title, diff: "BASIC", level: "?", date: "", jacketUrl: "", musicKind: "", achievementVal: 0, track: 0, fc: "", sync: "" } as PlayRecord));
-    const emb = new EmbedBuilder()
-      .setColor(0x2b2d31)
-      .setAuthor({ name: sep("", 34) })
-      .setTitle(truncateVisual(title, 26) + kind)
-      .setDescription("```\n" + lines.join("\n") + "\n```");
-    if (buf) {
-      const name = `sjacket${i}.png`;
-      files.push(new AttachmentBuilder(buf, { name }));
-      emb.setThumbnail(`attachment://${name}`);
-    }
-    return emb;
-  }));
+  const embeds = await Promise.all(
+    pageKeys.map(async (key, i) => {
+      const all = byChart.get(key) ?? [];
+      const title = all[0]?.title ?? key;
+      const kind = all[0]?.musicKind ? ` [${all[0].musicKind}]` : "";
+      const lines = DIFF_ORDER.flatMap((d) => {
+        const r = all.find((x) => x.diff === d);
+        const constant = getConstant(title, all[0]?.musicKind, d);
+        // Re:MASTER 채보가 없는 곡(상수·기록 모두 없음)은 행을 생략
+        if (d === "Re:MASTER" && constant === null && !r) return [];
+        const lv = constant !== null ? constant.toFixed(1) : (r?.level ?? "?");
+        const ach =
+          r && r.achievementVal > 0 ? r.achievementVal.toFixed(4) + "%" : "?";
+        const fc = r?.fc || "-";
+        const sync = r?.sync || "-";
+        return [
+          `${d.padEnd(9)} ${ach.padStart(9)}  ${String(lv).padStart(4)}  ${fc.padStart(4)}  ${sync.padStart(4)}`,
+        ];
+      });
+      const buf = await jacketBuffer(
+        all[0] ??
+          ({
+            title,
+            diff: "BASIC",
+            level: "?",
+            date: "",
+            jacketUrl: "",
+            musicKind: "",
+            achievementVal: 0,
+            track: 0,
+            fc: "",
+            sync: "",
+          } as PlayRecord),
+      );
+      // 유튜브 외부출력 검색 링크: "maimai {곡명} {ST/DX} 外部出力"
+      const ytQuery = encodeURIComponent(
+        `maimai ${title} ${all[0]?.musicKind || ""} 外部出力`
+          .replace(/\s+/g, " ")
+          .trim(),
+      );
+      const ytUrl = `https://www.youtube.com/results?search_query=${ytQuery}`;
+      const emb = new EmbedBuilder()
+        .setColor(0x2b2d31)
+        .setAuthor({
+          name: i === 0 ? sep(`"${query}"에 대한 검색 결과`, 34) : sep("", 34),
+        })
+        .setTitle(truncateVisual(title, 26) + kind)
+        .setDescription(
+          "```\n" + lines.join("\n") + "\n```" + `\n[▶ 외부출력](${ytUrl})`,
+        );
+      if (buf) {
+        const name = `sjacket${i}.png`;
+        files.push(new AttachmentBuilder(buf, { name }));
+        emb.setThumbnail(`attachment://${name}`);
+      }
+      return emb;
+    }),
+  );
 
   const qEnc = encodeURIComponent(query);
   const prevBtn = new ButtonBuilder()
@@ -291,13 +396,21 @@ export async function searchResultEmbeds(
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(idx === totalPages - 1);
 
-  const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(prevBtn, countBtn, nextBtn);
+  const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    prevBtn,
+    countBtn,
+    nextBtn,
+  );
 
   return { embeds, components: [navRow], files };
 }
 
 const DIFF_ABBR: Record<string, string> = {
-  BASIC: "BAS", ADVANCED: "ADV", EXPERT: "EXP", MASTER: "MAS", "Re:MASTER": "ReM",
+  BASIC: "BAS",
+  ADVANCED: "ADV",
+  EXPERT: "EXP",
+  MASTER: "MAS",
+  "Re:MASTER": "ReM",
 };
 
 // RS를 곡명 앞에 둠: 곡명(가변 폭, CJK 포함)을 마지막에 두어야 정렬이 깨지지 않음
@@ -309,7 +422,9 @@ function formatRtRow(r: PlayRecord, rank: number): string {
   const kind = (r.musicKind || "  ").padEnd(2);
   const constant = getConstant(r.title, r.musicKind, r.diff);
   const lv = (constant !== null ? constant.toFixed(1) : r.level).padEnd(4);
-  const ach = (r.achievementVal > 0 ? r.achievementVal.toFixed(4) + "%" : r.achievement).padStart(9);
+  const ach = (
+    r.achievementVal > 0 ? r.achievementVal.toFixed(4) + "%" : r.achievement
+  ).padStart(9);
   const rs = String(songRating(r)).padStart(3);
   const title = truncateVisual(r.title, 26);
   return `${rankStr} ${diff} ${kind} ${lv} ${ach}  ${rs}  ${title}`;
@@ -322,7 +437,13 @@ export function rtTableEmbed(
 
   if (records.length === 0) {
     return {
-      embeds: [new EmbedBuilder().setColor(0x2b2d31).setDescription("레이팅 기록 없음\n북마클릿을 다시 실행하면 업데이트됩니다.")],
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x2b2d31)
+          .setDescription(
+            "레이팅 기록 없음\n북마클릿을 다시 실행하면 업데이트됩니다.",
+          ),
+      ],
       components: [],
     };
   }
@@ -334,13 +455,19 @@ export function rtTableEmbed(
   const otherRows = otherRecords.map((r, i) => formatRtRow(r, i + 1));
 
   // 구분선 길이를 가장 긴 행(보통 ASCII 곡명)에 맞춰 표 너비와 일치시킴
-  const maxW = Math.max(visualWidth(RT_HEADER), ...newRows.map(visualWidth), ...otherRows.map(visualWidth));
+  const maxW = Math.max(
+    visualWidth(RT_HEADER),
+    ...newRows.map(visualWidth),
+    ...otherRows.map(visualWidth),
+  );
   const divider = "─".repeat(maxW);
   const withSeps = (rows: string[]) =>
     rows.flatMap((row, i) => (i > 0 && i % 5 === 0 ? [divider, row] : [row]));
 
-  const newBlock = "```\n" + RT_HEADER + "\n" + withSeps(newRows).join("\n") + "\n```";
-  const otherBlock = "```\n" + RT_HEADER + "\n" + withSeps(otherRows).join("\n") + "\n```";
+  const newBlock =
+    "```\n" + RT_HEADER + "\n" + withSeps(newRows).join("\n") + "\n```";
+  const otherBlock =
+    "```\n" + RT_HEADER + "\n" + withSeps(otherRows).join("\n") + "\n```";
 
   const desc =
     `**신곡 NEW · ${newRecords.length}곡**\n${newBlock}\n` +
@@ -352,7 +479,9 @@ export function rtTableEmbed(
         .setColor(0x2b2d31)
         .setAuthor({ name: sep("레이팅 대상곡") })
         .setDescription(desc)
-        .setFooter({ text: `총 ${newRecords.length + otherRecords.length}곡  ·  RS=곡별 레이팅 점수 (AP 보너스 미반영, 실제와 다를 수 있음)` }),
+        .setFooter({
+          text: `총 ${newRecords.length + otherRecords.length}곡  ·  RS=곡별 레이팅 점수 (AP 보너스 미반영, 실제와 다를 수 있음)`,
+        }),
     ],
     components: [],
   };
@@ -371,7 +500,10 @@ export function buildProfileReply(
     .setCustomId(`rt:${userId}`)
     .setLabel("레이팅 대상곡")
     .setStyle(ButtonStyle.Primary);
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(recentBtn, topBtn);
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    recentBtn,
+    topBtn,
+  );
   return {
     embeds: [profileEmb(cached, !!avatar)],
     files: avatar ? [avatar] : [],
