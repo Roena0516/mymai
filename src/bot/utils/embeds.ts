@@ -19,7 +19,7 @@ import {
 } from "../../constants";
 import { aliasMatches, normalizeQuery } from "../../aliases";
 import { ratingColor } from "./roles";
-import { buildMarkMap, chartKey } from "../../scraper";
+import { buildMarkMap, buildKindResolver, chartKey } from "../../scraper";
 import type { PlayRecord, ChartMarks } from "../../scraper";
 
 // 곡 자켓 버퍼: DB 캐시 → maimai net(musicId) → otoge-db(title) 순으로 확보하고 캐시
@@ -457,10 +457,13 @@ export function rtTableEmbed(
   const newRecords = records.slice(0, 15);
   const otherRecords = records.slice(15, 50);
 
-  // 레이팅 대상 페이지엔 FC/AP 마크가 없어 clear 기록에서 AP 보너스용 마크를 끌어옴
-  const markMap = buildMarkMap(getClearList(p));
-  const newRows = newRecords.map((r, i) => formatRtRow(r, i + 1, markMap));
-  const otherRows = otherRecords.map((r, i) => formatRtRow(r, i + 1, markMap));
+  // 레이팅 대상 페이지엔 FC/AP 마크가 없고 ST/DX도 부정확할 수 있어 clear 기록으로 보정
+  const clearList = getClearList(p);
+  const markMap = buildMarkMap(clearList);
+  const resolveKind = buildKindResolver(clearList);
+  const fix = (r: PlayRecord): PlayRecord => ({ ...r, musicKind: resolveKind(r) });
+  const newRows = newRecords.map((r, i) => formatRtRow(fix(r), i + 1, markMap));
+  const otherRows = otherRecords.map((r, i) => formatRtRow(fix(r), i + 1, markMap));
 
   // 구분선 길이를 가장 긴 행(보통 ASCII 곡명)에 맞춰 표 너비와 일치시킴
   const maxW = Math.max(
