@@ -53,7 +53,7 @@ code{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;backgrou
 <div class="card">
 <p class="mono">Step 01</p>
 <p>아래 버튼을 브라우저 북마크바로 드래그하세요.</p>
-<a class="bm" href="${bookmarklet}" draggable="true">⭐ Carol Bot</a>
+<a class="bm" href="${bookmarklet}" draggable="true">Carol Bot</a>
 <p style="font-size:13px;color:#666;margin-top:6px">북마크바가 없으면 <code>Ctrl+Shift+B</code></p>
 </div>
 <div class="card">
