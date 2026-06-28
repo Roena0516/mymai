@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/bot/index.js",
-    "dev": "ts-node src/bot/index.ts"
+    "dev": "ts-node src/bot/index.ts",
+    "dev:web": "ts-node src/web/dev.ts"
   },
   "keywords": [],
   "author": "",
