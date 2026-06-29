@@ -7,6 +7,7 @@ export interface BookmarkletPreset {
   label: string;
   description: string;
   code: string;
+  scriptUrl?: string;
 }
 
 export const BOOKMARKLET_PRESETS: BookmarkletPreset[] = [{
@@ -14,11 +15,12 @@ export const BOOKMARKLET_PRESETS: BookmarkletPreset[] = [{
   label: "maishift",
   description: "대부분 사용자가 함께 쓰는 maishift 북마클릿",
   code: "javascript:(function(i){var t=i.createElement(\"script\");t.src=\"https://maimai.shiftpsh.com/bookmarklet.js?v=\"+Math.floor(Date.now()/1e5),i.body.append(t)})(document);",
+  scriptUrl: "https://maimai.shiftpsh.com/bookmarklet.js",
 }];
 
-export function getBookmarkletPresets(ids: string[]): Array<{ label: string; code: string }> {
+export function getBookmarkletPresets(ids: string[]): Array<{ label: string; code: string; scriptUrl?: string }> {
   const enabled = new Set(ids);
-  return BOOKMARKLET_PRESETS.filter((preset) => enabled.has(preset.id)).map((preset) => ({ label: preset.label, code: preset.code }));
+  return BOOKMARKLET_PRESETS.filter((preset) => enabled.has(preset.id)).map((preset) => ({ label: preset.label, code: preset.code, scriptUrl: preset.scriptUrl }));
 }
 
 export function buildBookmarklet(token: string, port: number): string {
@@ -26,14 +28,14 @@ export function buildBookmarklet(token: string, port: number): string {
   return `javascript:(function(d){var s=d.createElement('script');s.src='${server}/bookmarklet.js?code=${token}&v='+Math.floor(Date.now()/1e5);d.body.append(s)})(document)`;
 }
 
-export function buildBookmarkletJs(extras: Array<{ label: string; code: string }>): string {
+export function buildBookmarkletJs(extras: Array<{ label: string; code: string; scriptUrl?: string }>): string {
   if (extras.length === 0) return bookmarkletJs;
   const extrasJson = JSON.stringify(extras);
-  const injection = `var _exbms=${extrasJson};if(_exbms.length>0){addSection('EXTRA');_exbms.forEach(function(bm,i){var _lbl=bm.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');addRow('ex'+i,_lbl);try{var _c=bm.code.replace(/^javascript:/,'');eval(_c);okRow('ex'+i,'완료');}catch(_e){console.warn('[carol] extra:',bm.label,_e);failRow('ex'+i,'실패');}});}`;
-  const marker = "var fin=doc.createElement";
-  const pos = bookmarkletJs.indexOf(marker);
+  const injection = `setTimeout(function(){var _exbms=${extrasJson};if(_exbms.length>0){addSection('EXTRA');_exbms.forEach(function(bm,i){var _id='ex'+i;var _lbl=bm.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');addRow(_id,_lbl);function _fail(tx){setRow(_id,'\\u2715','#f87171',tx||'실패');}try{if(bm.scriptUrl){var _sc=doc.createElement('script');_sc.onload=function(){okRow(_id,'로드됨');};_sc.onerror=function(){console.warn('[carol] extra load:',bm.label,bm.scriptUrl);_fail('로드 실패');};_sc.src=bm.scriptUrl+(bm.scriptUrl.indexOf('?')===-1?'?':'&')+'v='+Math.floor(Date.now()/1e5);doc.body.appendChild(_sc);}else{var _c=bm.code.replace(/^javascript:/,'');eval(_c);okRow(_id,'완료');}}catch(_e){console.warn('[carol] extra:',bm.label,_e);_fail('실패');}});}},0);`;
+  const marker = "})()";
+  const pos = bookmarkletJs.lastIndexOf(marker);
   if (pos === -1) return bookmarkletJs;
-  return bookmarkletJs.slice(0, pos) + injection + marker + bookmarkletJs.slice(pos + marker.length);
+  return bookmarkletJs.slice(0, pos) + injection + bookmarkletJs.slice(pos);
 }
 
 export const bookmarkletJs = `(async()=>{
@@ -63,12 +65,16 @@ addSection('ASSETS');
 addRow('rt','\uB808\uC774\uD305 \uACE1');addRow('av','\uC544\uBC14\uD0C0');addRow('jk','\uC7AC\uD0B7 \uC774\uBBF8\uC9C0');
 addSection('SERVER');
 addRow('sv','\uC11C\uBC84 \uC800\uC7A5');
-function xf(id,url,opt){return fetch(url).then(function(r){return r.text();}).then(function(t){var info=t.length>0?(t.length>1024?(t.length/1024).toFixed(1)+'KB':t.length+'B'):'\uC5C6\uC74C';okRow(id,info);return t;}).catch(function(){if(opt){skipRow(id,'\uC2E4\uD328');}else{failRow(id,'\uB124\uD2B8\uC6CC\uD06C \uC624\uB958');}return '';});}
-var rs=await Promise.all([xf('hm','/maimai-mobile/home/'),xf('pd','/maimai-mobile/playerData/'),xf('rc','/maimai-mobile/record/'),xf('fc','/maimai-mobile/friend/userFriendCode/'),xf('tb4','/maimai-mobile/record/musicGenre/search/?genre=99&diff=4',true),xf('tb3','/maimai-mobile/record/musicGenre/search/?genre=99&diff=3',true),xf('tb2','/maimai-mobile/record/musicGenre/search/?genre=99&diff=2',true),xf('tb1','/maimai-mobile/record/musicGenre/search/?genre=99&diff=1',true),xf('tb0','/maimai-mobile/record/musicGenre/search/?genre=99&diff=0',true),xf('rt','/maimai-mobile/home/ratingTargetMusic/',true)]);
-var h=rs[0],p=rs[1],rd=rs[2],f=rs[3],tb4=rs[4],tb3=rs[5],tb2=rs[6],tb1=rs[7],tb0=rs[8],rt=rs[9],a='',js=[];
-try{var pg={tb0:tb0,tb1:tb1,tb2:tb2,tb3:tb3,tb4:tb4,rt:rt};Object.keys(pg).forEach(function(k){var hx=pg[k];if(!hx){console.log('[carol]',k,'empty');return;}var d=new DOMParser().parseFromString(hx,'text/html');var n=d.querySelectorAll("[class*='music_'][class*='_score_back']").length;var ts=Array.from(d.querySelectorAll('.music_name_block')).map(function(e){return e.textContent.trim();}).slice(0,3);console.log('[carol]',k,'size='+hx.length,'records='+n,'sample='+JSON.stringify(ts));});}catch(e){console.log('[carol] diag error:',e.message);}
+var MAX_ATTEMPTS=3;
+function sleep(ms){return new Promise(function(res){setTimeout(res,ms);});}
+function xf(id,url,opt,attempt){return fetch(url).then(function(r){return r.text();}).then(function(t){var info=t.length>0?(t.length>1024?(t.length/1024).toFixed(1)+'KB':t.length+'B'):'\uC5C6\uC74C';okRow(id,info);return t;}).catch(function(){if(attempt<MAX_ATTEMPTS){setRow(id,'\u21BB','#facc15','\uC7AC\uC2DC\uB3C4');}else if(opt){skipRow(id,'\uC2E4\uD328');}else{failRow(id,'\uB124\uD2B8\uC6CC\uD06C \uC624\uB958');}return '';});}
+var h='',p='',rd='',f='',tb4='',tb3='',tb2='',tb1='',tb0='',rt='',a='',js=[],svText;
+async function collectCore(){for(var attempt=1;attempt<=MAX_ATTEMPTS;attempt++){if(attempt>1){setRow('sv','\u21BB','#facc15','\uC7AC\uC2DC\uB3C4 '+attempt+'/'+MAX_ATTEMPTS);}var rs=await Promise.all([xf('hm','/maimai-mobile/home/',false,attempt),xf('pd','/maimai-mobile/playerData/',false,attempt),xf('rc','/maimai-mobile/record/',false,attempt),xf('fc','/maimai-mobile/friend/userFriendCode/',false,attempt),xf('tb4','/maimai-mobile/record/musicGenre/search/?genre=99&diff=4',true,attempt),xf('tb3','/maimai-mobile/record/musicGenre/search/?genre=99&diff=3',true,attempt),xf('tb2','/maimai-mobile/record/musicGenre/search/?genre=99&diff=2',true,attempt),xf('tb1','/maimai-mobile/record/musicGenre/search/?genre=99&diff=1',true,attempt),xf('tb0','/maimai-mobile/record/musicGenre/search/?genre=99&diff=0',true,attempt),xf('rt','/maimai-mobile/home/ratingTargetMusic/',true,attempt)]);h=rs[0];p=rs[1];rd=rs[2];f=rs[3];tb4=rs[4];tb3=rs[5];tb2=rs[6];tb1=rs[7];tb0=rs[8];rt=rs[9];var required={hm:h,pd:p,rc:rd,fc:f,tb4:tb4,tb3:tb3,tb2:tb2,tb1:tb1,tb0:tb0};var missing=Object.keys(required).filter(function(id){return !required[id];});if(missing.length===0)return true;console.warn('[carol] missing pages attempt',attempt,missing);if(attempt<MAX_ATTEMPTS){missing.forEach(function(id){setRow(id,'\u21BB','#facc15','\uC7AC\uC2DC\uB3C4');});await sleep(500*attempt);}else{missing.forEach(function(id){failRow(id,'\uC218\uC9D1 \uC2E4\uD328');});}}return false;}
+async function postSync(){for(var attempt=1;attempt<=MAX_ATTEMPTS;attempt++){try{var resp=await fetch(v+'/sync?code='+c,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({h:h,p:p,r:rd,f:f,a:a,js:js,tb4:tb4,tb3:tb3,tb2:tb2,tb1:tb1,tb0:tb0,rt:rt})});if(resp.ok){svText=await resp.text();if(svText==='no_change'){skipRow('sv','\uC774\uBBF8 \uCD5C\uC2E0 \uC0C1\uD0DC');}else{okRow('sv');}return true;}if(attempt<MAX_ATTEMPTS){setRow('sv','\u21BB','#facc15','\uC7AC\uC2DC\uB3C4 '+(attempt+1)+'/'+MAX_ATTEMPTS);await sleep(500*attempt);}else{failRow('sv','HTTP '+resp.status);}}catch(e4){if(attempt<MAX_ATTEMPTS){setRow('sv','\u21BB','#facc15','\uC7AC\uC2DC\uB3C4 '+(attempt+1)+'/'+MAX_ATTEMPTS);await sleep(500*attempt);}else{failRow('sv','\uC5F0\uACB0 \uC2E4\uD328');}}}return false;}
+var coreOk=await collectCore();
+if(coreOk){try{var pg={tb0:tb0,tb1:tb1,tb2:tb2,tb3:tb3,tb4:tb4,rt:rt};Object.keys(pg).forEach(function(k){var hx=pg[k];if(!hx){console.log('[carol]',k,'empty');return;}var d=new DOMParser().parseFromString(hx,'text/html');var n=d.querySelectorAll("[class*='music_'][class*='_score_back']").length;var ts=Array.from(d.querySelectorAll('.music_name_block')).map(function(e){return e.textContent.trim();}).slice(0,3);console.log('[carol]',k,'size='+hx.length,'records='+n,'sample='+JSON.stringify(ts));});}catch(e){console.log('[carol] diag error:',e.message);}
 try{var m=h.match(/src="(https:[^"]*Icon[^"]*)"/);if(m){var bl=await fetch(m[1]).then(function(r){return r.blob();});a=await new Promise(function(res){var fr=new FileReader();fr.onload=function(){res(fr.result);};fr.readAsDataURL(bl);});okRow('av');}else{skipRow('av','\uC774\uBBF8\uC9C0 \uC5C6\uC74C');}}catch(e1){failRow('av');}
 try{var dp=new DOMParser(),d2=dp.parseFromString(rd,'text/html'),imgs=d2.querySelectorAll('.music_img'),cnt=Math.min(imgs.length,5);for(var i=0;i<cnt;i++){try{var src=imgs[i].src;if(src){var bl2=await fetch(src).then(function(r){return r.blob();});var b64=await new Promise(function(res){var fr=new FileReader();fr.onload=function(){res(fr.result);};fr.readAsDataURL(bl2);});js.push({url:src,data:b64});}}catch(e2){}}okRow('jk',cnt+'\uAC1C');}catch(e3){failRow('jk');}
-try{var resp=await fetch(v+'/sync?code='+c,{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({h:h,p:p,r:rd,f:f,a:a,js:js,tb4:tb4,tb3:tb3,tb2:tb2,tb1:tb1,tb0:tb0,rt:rt})});if(resp.ok){var svText=await resp.text();if(svText==='no_change'){skipRow('sv','\uC774\uBBF8 \uCD5C\uC2E0 \uC0C1\uD0DC');}else{okRow('sv');}}else{failRow('sv','HTTP '+resp.status);}}catch(e4){failRow('sv','\uC5F0\uACB0 \uC2E4\uD328');}
+await postSync();}else{skipRow('av','\uAC74\uB108\uB871');skipRow('jk','\uAC74\uB108\uB871');skipRow('sv','\uC218\uC9D1 \uC2E4\uD328');}
 var fin=doc.createElement('div');fin.style.cssText='display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid #1e1e1e;font-weight:700;font-size:13px;letter-spacing:.2px';if(typeof svText!=='undefined'&&svText==='no_change'&&!hadErr){fin.style.color='#aaa';fin.innerHTML='<span style="font-size:14px">\u2728</span><span>\uC774\uBBF8 \uCD5C\uC2E0 \uC0C1\uD0DC</span>';stEl.appendChild(fin);setTimeout(function(){ov.style.transition='opacity .3s';ov.style.opacity='0';setTimeout(function(){ov.remove();},300);},2500);}else if(!hadErr){fin.style.color='#4ade80';fin.innerHTML='<span style="font-size:14px">\u2713</span><span>\uB3D9\uAE30\uD654 \uC644\uB8CC</span>';stEl.appendChild(fin);setTimeout(function(){ov.style.transition='opacity .3s';ov.style.opacity='0';setTimeout(function(){ov.remove();},300);},2500);}else{fin.style.color='#f87171';fin.innerHTML='<span style="font-size:14px">\u26A0</span><span>\uC77C\uBD80 \uD56D\uBAA9 \uC2E4\uD328</span>';stEl.appendChild(fin);}
 })()`;
