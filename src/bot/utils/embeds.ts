@@ -174,6 +174,7 @@ export function groupByGame(records: PlayRecord[]): PlayRecord[][] {
     current.push(r);
   }
   if (current.length > 0) games.push(current);
+  for (const game of games) game.sort((a, b) => b.track - a.track);
   return games;
 }
 
