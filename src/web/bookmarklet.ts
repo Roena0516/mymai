@@ -47,12 +47,11 @@ export function buildBookmarklet(token: string, port: number): string {
 export function buildBookmarkletJs(extras: Array<{ label: string; code: string; execution?: BookmarkletExecution }>): string {
   if (extras.length === 0) return bookmarkletJs;
   const extrasJson = JSON.stringify(extras);
-  const baseJs = bookmarkletJs.replace(/setTimeout\(function\(\)\{ov\.style\.transition='opacity \.3s';ov\.style\.opacity='0';setTimeout\(function\(\)\{ov\.remove\(\);\},300\);\},2500\);/g, "");
-  const injection = `(function(){var _exbms=${extrasJson};_exbms.forEach(function(bm){try{(0,eval)(bm.code.replace(/^javascript:/,''));}catch(_e){console.warn('[carol] extra:',bm.label,_e);}});})();`;
-  const marker = "})()";
-  const pos = baseJs.lastIndexOf(marker);
-  if (pos === -1) return baseJs;
-  return baseJs.slice(0, pos) + injection + baseJs.slice(pos);
+  const injection = `(function(){var _exbms=${extrasJson};if(_exbms.length>0){addSection('EXTRA');_exbms.forEach(function(bm,i){var _id='ex'+i;var _lbl=bm.label.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');addRow(_id,_lbl);try{(0,eval)(bm.code.replace(/^javascript:/,''));okRow(_id,'\\uC2E4\\uD589');}catch(_e){console.warn('[carol] extra:',bm.label,_e);failRow(_id,'\\uC2E4\\uD328');}});}})();`;
+  const marker = "var coreOk=await collectCore();";
+  const pos = bookmarkletJs.indexOf(marker);
+  if (pos === -1) return bookmarkletJs;
+  return bookmarkletJs.slice(0, pos) + injection + marker + bookmarkletJs.slice(pos + marker.length);
 }
 
 export const bookmarkletJs = `(async()=>{
