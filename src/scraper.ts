@@ -94,7 +94,9 @@ function parseOneRecord($: cheerio.CheerioAPI, el: any): PlayRecord | null {
   const level = block.find(".playlog_level_icon").text().trim();
   const clone = block.clone();
   clone.find(".w_80").remove();
-  const title = clone.text().trim();
+  const rawTitle = clone.text();
+  // 전각 공백(U+3000)만인 제목 보존 (trim 시 빈 문자열이 되어 누락 방지)
+  const title = rawTitle.trim() || (/　/.test(rawTitle) ? "　" : "");
   if (!title) return null;
   const ach = $(el).find(".playlog_achievement_txt").text().trim();
   const achNum = parseFloat(ach.replace(/[^\d.]/g, "")) || 0;
@@ -152,7 +154,9 @@ export function parseMusicScore(html: string): PlayRecord[] {
   };
   $("[class*='music_'][class*='_score_back']").each((_, el) => {
     const block = $(el);
-    const title = block.find(".music_name_block").text().trim();
+    const rawTitle = block.find(".music_name_block").text();
+    // 제목이 전각 공백(U+3000)만인 곡은 trim 시 빈 문자열이 되어 누락됨 → 원본 공백 유지
+    const title = rawTitle.trim() || (/　/.test(rawTitle) ? "　" : "");
     if (!title) return;
     const level = block.find(".music_lv_block").text().trim();
     const achievement = block.find(".music_score_block").text().trim();
