@@ -24,7 +24,7 @@ export const data = new SlashCommandBuilder()
   .setDescription("오늘의 곡 확인");
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
-  const fortune = getDailyFortuneSong();
+  const fortune = getDailyFortuneSong(interaction.user.id);
   if (!fortune) {
     await interaction.reply({
       content: "오늘의 운세를 만들 곡을 찾지 못했습니다. 곡 데이터를 다시 불러와 주세요.",

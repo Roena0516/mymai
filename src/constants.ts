@@ -187,9 +187,9 @@ function hashString(input: string): number {
   return hash >>> 0;
 }
 
-export function getDailyFortuneSong(date: Date = new Date()): DailyFortuneSong | null {
+export function getDailyFortuneSong(userId: string, date: Date = new Date()): DailyFortuneSong | null {
   if (dailyFortuneSongs.length === 0) return null;
-  const index = hashString(seoulDateKey(date)) % dailyFortuneSongs.length;
+  const index = hashString(`${userId}|${seoulDateKey(date)}`) % dailyFortuneSongs.length;
   return dailyFortuneSongs[index] ?? null;
 }
 
