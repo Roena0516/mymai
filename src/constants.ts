@@ -29,6 +29,21 @@ const JP_URL = "https://otoge-db.net/maimai/data/music-ex.json";
 
 let constantMap: Map<string, number> = new Map();
 let jacketMap: Map<string, string> = new Map();
+const FORTUNE_MIN_CONSTANT = 14.6;
+const FORTUNE_MAX_CONSTANT = 15.1;
+export interface DailyFortuneChart {
+  kind: "ST" | "DX";
+  diff: string;
+  level: number;
+}
+
+export interface DailyFortuneSong {
+  title: string;
+  jacketFile: string | null;
+  charts: DailyFortuneChart[];
+}
+
+let dailyFortuneSongs: DailyFortuneSong[] = [];
 
 // 이미 존재하는 키는 덮어쓰지 않음 → 먼저 채운 쪽(국제판)이 우선
 function ingest(data: SongEntry[]): void {
@@ -45,6 +60,46 @@ function ingest(data: SongEntry[]): void {
   }
 }
 
+function diffRank(diff: string): number {
+  switch (diff) {
+    case "Re:MASTER": return 4;
+    case "MASTER": return 3;
+    case "EXPERT": return 2;
+    case "ADVANCED": return 1;
+    default: return 0;
+  }
+}
+
+function rebuildDailyFortuneSongs(): void {
+  const grouped = new Map<string, DailyFortuneSong>();
+  for (const [key, level] of constantMap.entries()) {
+    if (level < FORTUNE_MIN_CONSTANT || level >= FORTUNE_MAX_CONSTANT) continue;
+    const [title, kindRaw, diff] = key.split("|");
+    if (!title || !kindRaw || !diff) continue;
+    const kind = kindRaw === "DX" ? "DX" : "ST";
+    const existing = grouped.get(title) ?? {
+      title,
+      jacketFile: jacketMap.get(title) ?? null,
+      charts: [],
+    };
+    existing.charts.push({ kind, diff, level });
+    grouped.set(title, existing);
+  }
+
+  dailyFortuneSongs = Array.from(grouped.values())
+    .map((song) => ({
+      ...song,
+      charts: song.charts
+        .slice()
+        .sort((a, b) => {
+          if (b.level !== a.level) return b.level - a.level;
+          if (a.kind !== b.kind) return a.kind === "DX" ? -1 : 1;
+          return diffRank(b.diff) - diffRank(a.diff);
+        }),
+    }))
+    .sort((a, b) => a.title.localeCompare(b.title, "en"));
+}
+
 async function fetchSongs(url: string): Promise<SongEntry[]> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -58,6 +113,7 @@ export async function loadConstants(): Promise<void> {
       const parsed = JSON.parse(dbCache.data) as { constants: [string, number][]; jackets: [string, string][] };
       constantMap = new Map(parsed.constants);
       jacketMap = new Map(parsed.jackets);
+      rebuildDailyFortuneSongs();
       console.log(`[constants] DB 캐시 복원: 상수 ${constantMap.size}개, 자켓 ${jacketMap.size}개`);
       return;
     } catch (e) {
@@ -87,6 +143,7 @@ export async function loadConstants(): Promise<void> {
       constants: Array.from(constantMap.entries()),
       jackets: Array.from(jacketMap.entries()),
     }));
+    rebuildDailyFortuneSongs();
   } catch (e) {
     console.error("[constants] 로드 실패:", e);
     if (dbCache) {
@@ -94,6 +151,7 @@ export async function loadConstants(): Promise<void> {
         const parsed = JSON.parse(dbCache.data) as { constants: [string, number][]; jackets: [string, string][] };
         constantMap = new Map(parsed.constants);
         jacketMap = new Map(parsed.jackets);
+        rebuildDailyFortuneSongs();
         console.log(`[constants] 네트워크 실패, 오래된 DB 캐시 사용: 상수 ${constantMap.size}개`);
       } catch (e2) {
         console.error("[constants] DB 캐시 파싱도 실패:", e2);
@@ -105,6 +163,34 @@ export async function loadConstants(): Promise<void> {
 // otoge-db 자켓 이미지 파일명 (예: "c7cfd8a91e0436ac.png")
 export function getJacketFile(title: string): string | null {
   return jacketMap.get(title) ?? null;
+}
+
+function seoulDateKey(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const month = parts.find((p) => p.type === "month")?.value ?? "00";
+  const day = parts.find((p) => p.type === "day")?.value ?? "00";
+  return `${year}-${month}-${day}`;
+}
+
+function hashString(input: string): number {
+  let hash = 0x811c9dc5;
+  for (const ch of input) {
+    hash ^= ch.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+export function getDailyFortuneSong(date: Date = new Date()): DailyFortuneSong | null {
+  if (dailyFortuneSongs.length === 0) return null;
+  const index = hashString(seoulDateKey(date)) % dailyFortuneSongs.length;
+  return dailyFortuneSongs[index] ?? null;
 }
 
 export function getConstant(title: string, musicKind: string, diff: string): number | null {

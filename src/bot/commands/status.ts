@@ -29,6 +29,15 @@ function formatUptime(seconds: number): string {
   return parts.join(" ");
 }
 
+function formatPing(ping: number): string {
+  return ping >= 0 ? `${ping}ms` : "측정 중";
+}
+
+function pingColor(ping: number): number {
+  if (ping < 0) return 0x64748b;
+  return ping < 150 ? 0x22c55e : ping < 400 ? 0xf59e0b : 0xef4444;
+}
+
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   await interaction.deferReply();
 
@@ -45,9 +54,9 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     embeds: [
       new EmbedBuilder()
         .setTitle("서버 상태")
-        .setColor(ping < 150 ? 0x22c55e : ping < 400 ? 0xf59e0b : 0xef4444)
+        .setColor(pingColor(ping))
         .addFields(
-          { name: "핑", value: `${ping}ms`, inline: true },
+          { name: "핑", value: formatPing(ping), inline: true },
           { name: "가동 시간", value: uptime, inline: true },
           { name: "버전", value: version, inline: true },
           { name: "등록 유저", value: `${userCount}명`, inline: true },
