@@ -13,6 +13,7 @@ import * as profile      from "./commands/profile";
 import * as bookmarklet  from "./commands/bookmarklet";
 import * as ratingtable  from "./commands/ratingtable";
 import * as ratingimage  from "./commands/ratingimage";
+import * as fortune      from "./commands/fortune";
 import * as settings     from "./commands/settings";
 import * as serverSettings from "./commands/serverSettings";
 import * as search       from "./commands/search";
@@ -20,7 +21,7 @@ import * as status       from "./commands/status";
 
 type Command = { data: { toJSON(): object; name: string }; execute: (i: ChatInputCommandInteraction) => Promise<void> };
 
-const COMMANDS: Command[] = [profile, bookmarklet, ratingtable, ratingimage, settings, serverSettings, search, status];
+const COMMANDS: Command[] = [profile, bookmarklet, ratingtable, ratingimage, fortune, settings, serverSettings, search, status];
 
 const RATING_CARD_GC_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 const RATING_CARD_GC_INTERVAL_MS = 24 * 60 * 60 * 1000;
