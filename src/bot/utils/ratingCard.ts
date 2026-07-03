@@ -23,7 +23,7 @@ const CARD_H = 115;
 const GAP = 4;
 const ACCENT = "#9333ea";
 // 카드 레이아웃/계산이 바뀌면 올린다 → 기존 렌더 캐시가 자동 무효화됨
-const CARD_VERSION = 6;
+const CARD_VERSION = 7;
 
 const MAI_DIFF_COLOR: Record<string, string> = {
   BASIC: "#16a34a",
@@ -574,7 +574,14 @@ export async function renderRatingCard(
       }),
       el(
         "div",
-        { display: "flex", flexDirection: "column", width: rightWidth },
+        {
+          display: "flex",
+          flexDirection: "column",
+          width: rightWidth,
+          // NEW 패널의 상하 패딩만큼 맞춰 섹션 라벨/카드 높이를 정렬 (가로 패딩은 없음 → 폭 유지)
+          paddingTop: NEW_PAD,
+          paddingBottom: NEW_PAD,
+        },
         [
           sectionLabel("OTHERS", otherVms.length, avg(otherVms)),
           cardGrid(otherVms, rightCols, 1, jackets),
