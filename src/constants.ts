@@ -3,6 +3,7 @@ import { getConstantsCache, saveConstantsCache } from "./db";
 interface SongEntry {
   title: string;
   image_url?: string;
+  version?: string;
   lev_bas_i?: string;
   lev_adv_i?: string;
   lev_exp_i?: string;
@@ -29,6 +30,17 @@ const JP_URL = "https://otoge-db.net/maimai/data/music-ex.json";
 
 let constantMap: Map<string, number> = new Map();
 let jacketMap: Map<string, string> = new Map();
+// 곡 → otoge-db version 코드 (예: "26000" → 26000). 신곡/구곡 판정용.
+let versionMap: Map<string, number> = new Map();
+
+// 레이팅 "신곡" 버전 범위. version은 JP 버전이라 국제판과 반 버전 어긋날 수 있어
+// (예: Galaxy Blaster는 JP CiRCLE PLUS(26500)지만 국제판은 CiRCLE), CiRCLE PLUS까지
+// 넓게 포함해 국제판/JP 어느 쪽 수록이든 신곡으로 잡히게 한다.
+// 버전 코드는 시작값 + 세부 웨이브(예: PRiSM PLUS = 25500~25599)이므로 범위로 판정.
+// (시작 코드: 25500 PRiSM PLUS, 26000 CiRCLE, 26500 CiRCLE PLUS, 27000 다음 세대 ...)
+const NEW_SONG_MIN_VERSION = 25500; // PRiSM PLUS 시작 (포함)
+const NEW_SONG_MAX_VERSION = 27000; // 다음 세대 시작 (미포함) = CiRCLE PLUS까지 신곡
+
 const FORTUNE_MIN_CONSTANT = 14.6;
 const FORTUNE_MAX_CONSTANT = 15.1;
 export interface DailyFortuneChart {
@@ -49,6 +61,10 @@ let dailyFortuneSongs: DailyFortuneSong[] = [];
 function ingest(data: SongEntry[]): void {
   for (const song of data) {
     if (song.image_url && !jacketMap.has(song.title)) jacketMap.set(song.title, song.image_url);
+    if (song.version && !versionMap.has(song.title)) {
+      const v = parseInt(song.version, 10);
+      if (!isNaN(v)) versionMap.set(song.title, v);
+    }
     for (const [diff, [stField, dxField]] of Object.entries(DIFF_FIELDS)) {
       const v = parseFloat((song[stField] as string | undefined) ?? "");
       const dv = parseFloat((song[dxField] as string | undefined) ?? "");
@@ -106,16 +122,32 @@ async function fetchSongs(url: string): Promise<SongEntry[]> {
   return await res.json() as SongEntry[];
 }
 
+interface ConstantsCache {
+  constants: [string, number][];
+  jackets: [string, string][];
+  versions?: [string, number][];
+}
+
+// 캐시 복원. version 데이터가 없는 구버전 캐시면 hasVersions=false 반환.
+function applyCache(data: string): { hasVersions: boolean } {
+  const parsed = JSON.parse(data) as ConstantsCache;
+  constantMap = new Map(parsed.constants);
+  jacketMap = new Map(parsed.jackets);
+  const hasVersions = !!parsed.versions;
+  versionMap = hasVersions ? new Map(parsed.versions) : new Map();
+  rebuildDailyFortuneSongs();
+  return { hasVersions };
+}
+
 export async function loadConstants(): Promise<void> {
   const dbCache = getConstantsCache();
   if (dbCache && Date.now() - dbCache.updatedAt < 24 * 60 * 60 * 1000) {
     try {
-      const parsed = JSON.parse(dbCache.data) as { constants: [string, number][]; jackets: [string, string][] };
-      constantMap = new Map(parsed.constants);
-      jacketMap = new Map(parsed.jackets);
-      rebuildDailyFortuneSongs();
-      console.log(`[constants] DB 캐시 복원: 상수 ${constantMap.size}개, 자켓 ${jacketMap.size}개`);
-      return;
+      if (applyCache(dbCache.data).hasVersions) {
+        console.log(`[constants] DB 캐시 복원: 상수 ${constantMap.size}개, 자켓 ${jacketMap.size}개, version ${versionMap.size}개`);
+        return;
+      }
+      console.log("[constants] 캐시에 version 없음 → 네트워크 재fetch");
     } catch (e) {
       console.error("[constants] DB 캐시 파싱 실패, 네트워크 fetch 시도:", e);
     }
@@ -125,6 +157,7 @@ export async function loadConstants(): Promise<void> {
     const intl = await fetchSongs(INTL_URL);
     constantMap = new Map();
     jacketMap = new Map();
+    versionMap = new Map();
     ingest(intl);
     const intlCount = constantMap.size;
 
@@ -138,20 +171,18 @@ export async function loadConstants(): Promise<void> {
       console.error("[constants] JP 보충 로드 실패:", e);
     }
 
-    console.log(`[constants] 국제판 ${intl.length}곡 (상수 ${intlCount}개) + JP 보충 ${jpAdded}개, 자켓 ${jacketMap.size}개`);
+    console.log(`[constants] 국제판 ${intl.length}곡 (상수 ${intlCount}개) + JP 보충 ${jpAdded}개, 자켓 ${jacketMap.size}개, version ${versionMap.size}개`);
     saveConstantsCache(JSON.stringify({
       constants: Array.from(constantMap.entries()),
       jackets: Array.from(jacketMap.entries()),
-    }));
+      versions: Array.from(versionMap.entries()),
+    } satisfies ConstantsCache));
     rebuildDailyFortuneSongs();
   } catch (e) {
     console.error("[constants] 로드 실패:", e);
     if (dbCache) {
       try {
-        const parsed = JSON.parse(dbCache.data) as { constants: [string, number][]; jackets: [string, string][] };
-        constantMap = new Map(parsed.constants);
-        jacketMap = new Map(parsed.jackets);
-        rebuildDailyFortuneSongs();
+        applyCache(dbCache.data);
         console.log(`[constants] 네트워크 실패, 오래된 DB 캐시 사용: 상수 ${constantMap.size}개`);
       } catch (e2) {
         console.error("[constants] DB 캐시 파싱도 실패:", e2);
@@ -163,6 +194,36 @@ export async function loadConstants(): Promise<void> {
 // otoge-db 자켓 이미지 파일명 (예: "c7cfd8a91e0436ac.png")
 export function getJacketFile(title: string): string | null {
   return jacketMap.get(title) ?? null;
+}
+
+// 곡 version 세대 코드 (없으면 null)
+export function getSongVersion(title: string): number | null {
+  return versionMap.get(title) ?? null;
+}
+
+// 레이팅 신곡(현재+이전 버전) 여부. version 데이터가 없으면 구곡으로 취급.
+export function isNewSong(title: string): boolean {
+  const v = versionMap.get(title);
+  return v !== undefined && v >= NEW_SONG_MIN_VERSION && v < NEW_SONG_MAX_VERSION;
+}
+
+export interface ChartInfo {
+  title: string;
+  kind: "ST" | "DX";
+  diff: string;
+  level: number;
+}
+
+// 상수가 max 이하인 모든 채보 목록 (곡추천 후보 풀)
+export function getChartsUnderConstant(max: number): ChartInfo[] {
+  const charts: ChartInfo[] = [];
+  for (const [key, level] of constantMap.entries()) {
+    if (level > max) continue;
+    const [title, kindRaw, diff] = key.split("|");
+    if (!title || !kindRaw || !diff) continue;
+    charts.push({ title, kind: kindRaw === "DX" ? "DX" : "ST", diff, level });
+  }
+  return charts;
 }
 
 function seoulDateKey(date: Date): string {
