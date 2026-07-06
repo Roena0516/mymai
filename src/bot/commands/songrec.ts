@@ -17,6 +17,7 @@ import {
   getJacketFile,
   getChartsUnderConstant,
   isNewSong,
+  isIntlAvailable,
 } from "../../constants";
 import { chartKey } from "../../scraper";
 import type { PlayRecord } from "../../scraper";
@@ -73,10 +74,20 @@ function weightedPick<T>(items: { item: T; weight: number }[]): T {
   return items[items.length - 1].item;
 }
 
+export interface RecommendOptions {
+  kind?: "ST" | "DX"; // 지정 시 해당 채보 타입만
+  play?: "played" | "unplayed"; // 지정 시 플레이/미플레이만
+}
+
+// 기본 플레이:미플레이 목표 비율 (필터 미지정 시)
+const TARGET_PLAYED = 0.6;
+const TARGET_UNPLAYED = 0.4;
+
 // clearJson 기반으로 레이팅이 오를 채보 count개를 추천
 export function recommendCharts(
   clearRecords: PlayRecord[],
   count = 3,
+  opts: RecommendOptions = {},
 ): Recommendation[] {
   if (clearRecords.length === 0) return [];
 
@@ -114,12 +125,18 @@ export function recommendCharts(
     currentAch: number;
     currentRS: number;
     fc: string;
+    played: boolean;
     validTargets: typeof RANKS;
   };
   const candidates: Candidate[] = [];
   for (const chart of getChartsUnderConstant(upperBound)) {
+    if (!isIntlAvailable(chart.title)) continue; // 국제판 미수록 곡 제외
+    if (opts.kind && chart.kind !== opts.kind) continue; // ST/DX 필터
     const rec = clearMap.get(`${chart.title}|${chart.kind}|${chart.diff}`);
     const userAch = rec?.achievementVal ?? 0;
+    const played = userAch > 0;
+    if (opts.play === "played" && !played) continue; // 플레이/미플레이 필터
+    if (opts.play === "unplayed" && played) continue;
     const fc = rec?.fc ?? "";
     const floor = isNewSong(chart.title) ? newFloor : oldFloor;
     const validTargets = RANKS.filter(
@@ -135,16 +152,32 @@ export function recommendCharts(
       currentAch: userAch,
       currentRS: calcSongRating(userAch, chart.level, fc),
       fc,
+      played,
       validTargets,
     });
   }
 
-  // 가중 추출 (DX 비중 ↑, 비복원)
+  // 가중 추출 (비복원). DX 2배 가중 + 플레이:미플레이 그룹 목표 비율(60:40) 정규화.
   const pool = candidates.slice();
   const chosen: Recommendation[] = [];
   while (chosen.length < count && pool.length > 0) {
+    let sumPlayed = 0;
+    let sumUnplayed = 0;
+    for (const c of pool) {
+      const dxW = c.kind === "DX" ? 2 : 1;
+      if (c.played) sumPlayed += dxW;
+      else sumUnplayed += dxW;
+    }
     const pick = weightedPick(
-      pool.map((c) => ({ item: c, weight: c.kind === "DX" ? 2 : 1 })),
+      pool.map((c) => {
+        const dxW = c.kind === "DX" ? 2 : 1;
+        const groupSum = c.played ? sumPlayed : sumUnplayed;
+        const groupTarget = c.played ? TARGET_PLAYED : TARGET_UNPLAYED;
+        return {
+          item: c,
+          weight: groupSum > 0 ? (groupTarget * dxW) / groupSum : 0,
+        };
+      }),
     );
     pool.splice(pool.indexOf(pick), 1);
     const target = weightedPick(
@@ -174,6 +207,26 @@ export function recommendCharts(
 export const data = new SlashCommandBuilder()
   .setName("곡추천")
   .setDescription("레이팅 대상곡 기반으로 점수 올리기 좋은 채보 3개 추천")
+  .addStringOption((opt) =>
+    opt
+      .setName("type")
+      .setDescription("채보 타입 (Optional)")
+      .setRequired(false)
+      .addChoices(
+        { name: "STANDARD", value: "ST" },
+        { name: "DX", value: "DX" },
+      ),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("플레이여부")
+      .setDescription("플레이한 곡 / 미플레이 곡만 (Optional)")
+      .setRequired(false)
+      .addChoices(
+        { name: "플레이", value: "played" },
+        { name: "미플레이", value: "unplayed" },
+      ),
+  )
   .addUserOption((opt) =>
     opt
       .setName("user")
@@ -213,7 +266,12 @@ export async function execute(
     return;
   }
 
-  const recs = recommendCharts(clearRecords, 3);
+  const kindOpt = interaction.options.getString("type");
+  const playOpt = interaction.options.getString("플레이여부");
+  const recs = recommendCharts(clearRecords, 3, {
+    kind: kindOpt === "ST" || kindOpt === "DX" ? kindOpt : undefined,
+    play: playOpt === "played" || playOpt === "unplayed" ? playOpt : undefined,
+  });
   if (recs.length === 0) {
     await interaction.reply({
       content: "추천할 채보를 찾지 못했습니다.",
@@ -226,9 +284,17 @@ export async function execute(
     const chartDelta = r.targetRS - r.currentRS;
     const cur = r.currentAch > 0 ? `${r.currentAch.toFixed(4)}%` : "미플레이";
     const newRating = cached.rating + r.ratingDelta;
+    // 유튜브 외부출력 검색: "maimai {곡명} {ST/DX} {난이도} 外部出力"
+    const ytQuery = encodeURIComponent(
+      `maimai ${r.title} ${r.kind} ${r.diff} 外部出力`
+        .replace(/\s+/g, " ")
+        .trim(),
+    );
+    const ytUrl = `https://www.youtube.com/results?search_query=${ytQuery}`;
     const emb = new EmbedBuilder()
       .setColor(RANK_COLOR[r.targetRank] ?? 0x9333ea)
       .setTitle(`${r.title} [${r.kind}]`)
+      .setDescription(`[▶ 외부출력](${ytUrl})`)
       .addFields(
         {
           name: "채보",
@@ -254,7 +320,7 @@ export async function execute(
         { name: "​", value: "​", inline: true },
         { name: "현재", value: cur, inline: true },
       );
-    if (i === 0) emb.setAuthor({ name: "곡 추천" });
+    if (i === 0) emb.setAuthor({ name: "레이팅 대상곡에 따른 곡 추천" });
     const jacket = r.jacketFile;
     if (jacket)
       emb.setThumbnail(`https://otoge-db.net/maimai/jacket/${jacket}`);
