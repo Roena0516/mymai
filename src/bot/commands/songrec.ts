@@ -48,6 +48,7 @@ export interface Recommendation {
   targetAch: number;
   targetRS: number;
   ratingDelta: number; // 실제 총 레이팅 증가분 (목표RS - max(현재RS, 해당 풀 컷라인))
+  isNew: boolean; // 신곡 여부
   jacketFile: string | null;
 }
 
@@ -77,6 +78,8 @@ function weightedPick<T>(items: { item: T; weight: number }[]): T {
 export interface RecommendOptions {
   kind?: "ST" | "DX"; // 지정 시 해당 채보 타입만
   play?: "played" | "unplayed"; // 지정 시 플레이/미플레이만
+  diff?: string; // 지정 시 해당 난이도만 (BASIC~Re:MASTER)
+  category?: "new" | "others"; // 지정 시 신곡/구곡만
 }
 
 // 기본 플레이:미플레이 목표 비율 (필터 미지정 시)
@@ -126,19 +129,23 @@ export function recommendCharts(
     currentRS: number;
     fc: string;
     played: boolean;
-    validTargets: typeof RANKS;
+    minTarget: (typeof RANKS)[number]; // 점수를 먹기 시작하는 최소 랭크
   };
   const candidates: Candidate[] = [];
   for (const chart of getChartsUnderConstant(upperBound)) {
     if (!isIntlAvailable(chart.title)) continue; // 국제판 미수록 곡 제외
     if (opts.kind && chart.kind !== opts.kind) continue; // ST/DX 필터
+    if (opts.diff && chart.diff !== opts.diff) continue; // 난이도 필터
+    const isNew = isNewSong(chart.title);
+    if (opts.category === "new" && !isNew) continue; // 신곡/구곡 필터
+    if (opts.category === "others" && isNew) continue;
     const rec = clearMap.get(`${chart.title}|${chart.kind}|${chart.diff}`);
     const userAch = rec?.achievementVal ?? 0;
     const played = userAch > 0;
     if (opts.play === "played" && !played) continue; // 플레이/미플레이 필터
     if (opts.play === "unplayed" && played) continue;
     const fc = rec?.fc ?? "";
-    const floor = isNewSong(chart.title) ? newFloor : oldFloor;
+    const floor = isNew ? newFloor : oldFloor;
     const validTargets = RANKS.filter(
       (rank) =>
         rank.ach > userAch && calcSongRating(rank.ach, chart.level, fc) > floor,
@@ -153,36 +160,36 @@ export function recommendCharts(
       currentRS: calcSongRating(userAch, chart.level, fc),
       fc,
       played,
-      validTargets,
+      minTarget: validTargets[0], // 유효 목표 중 가장 낮은 랭크 = 최소 목표
     });
   }
 
-  // 가중 추출 (비복원). DX 2배 가중 + 플레이:미플레이 그룹 목표 비율(60:40) 정규화.
+  // 곡 가중 = DX 2배 × 최소목표 가중(SSS~SSS+가 SS/SS+보다 더 자주 뽑히도록)
+  const chartWeight = (c: Candidate) =>
+    (c.kind === "DX" ? 2 : 1) * c.minTarget.weight;
+
+  // 가중 추출 (비복원). 위 가중 + 플레이:미플레이 그룹 목표 비율(60:40) 정규화.
   const pool = candidates.slice();
   const chosen: Recommendation[] = [];
   while (chosen.length < count && pool.length > 0) {
     let sumPlayed = 0;
     let sumUnplayed = 0;
     for (const c of pool) {
-      const dxW = c.kind === "DX" ? 2 : 1;
-      if (c.played) sumPlayed += dxW;
-      else sumUnplayed += dxW;
+      if (c.played) sumPlayed += chartWeight(c);
+      else sumUnplayed += chartWeight(c);
     }
     const pick = weightedPick(
       pool.map((c) => {
-        const dxW = c.kind === "DX" ? 2 : 1;
         const groupSum = c.played ? sumPlayed : sumUnplayed;
         const groupTarget = c.played ? TARGET_PLAYED : TARGET_UNPLAYED;
         return {
           item: c,
-          weight: groupSum > 0 ? (groupTarget * dxW) / groupSum : 0,
+          weight: groupSum > 0 ? (groupTarget * chartWeight(c)) / groupSum : 0,
         };
       }),
     );
     pool.splice(pool.indexOf(pick), 1);
-    const target = weightedPick(
-      pick.validTargets.map((t) => ({ item: t, weight: t.weight })),
-    );
+    const target = pick.minTarget; // 최소 목표를 그대로 표시
     const targetRS = calcSongRating(target.ach, pick.level, pick.fc);
     // 실제 총 레이팅 변화: 이 채보가 이미 대상이면 현재RS를, 아니면 컷라인을 밀어냄
     const floor = isNewSong(pick.title) ? newFloor : oldFloor;
@@ -198,6 +205,7 @@ export function recommendCharts(
       targetAch: target.ach,
       targetRS,
       ratingDelta,
+      isNew: isNewSong(pick.title),
       jacketFile: getJacketFile(pick.title),
     });
   }
@@ -225,6 +233,29 @@ export const data = new SlashCommandBuilder()
       .addChoices(
         { name: "플레이", value: "played" },
         { name: "미플레이", value: "unplayed" },
+      ),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("난이도")
+      .setDescription("난이도 (Optional)")
+      .setRequired(false)
+      .addChoices(
+        { name: "BASIC", value: "BASIC" },
+        { name: "ADVANCED", value: "ADVANCED" },
+        { name: "EXPERT", value: "EXPERT" },
+        { name: "MASTER", value: "MASTER" },
+        { name: "Re:MASTER", value: "Re:MASTER" },
+      ),
+  )
+  .addStringOption((opt) =>
+    opt
+      .setName("곡분류")
+      .setDescription("신곡 / 구곡만 (Optional)")
+      .setRequired(false)
+      .addChoices(
+        { name: "신곡", value: "new" },
+        { name: "구곡", value: "others" },
       ),
   )
   .addUserOption((opt) =>
@@ -268,9 +299,13 @@ export async function execute(
 
   const kindOpt = interaction.options.getString("type");
   const playOpt = interaction.options.getString("플레이여부");
+  const diffOpt = interaction.options.getString("난이도");
+  const catOpt = interaction.options.getString("곡분류");
   const recs = recommendCharts(clearRecords, 3, {
     kind: kindOpt === "ST" || kindOpt === "DX" ? kindOpt : undefined,
     play: playOpt === "played" || playOpt === "unplayed" ? playOpt : undefined,
+    diff: diffOpt ?? undefined,
+    category: catOpt === "new" || catOpt === "others" ? catOpt : undefined,
   });
   if (recs.length === 0) {
     await interaction.reply({
@@ -298,7 +333,7 @@ export async function execute(
       .addFields(
         {
           name: "채보",
-          value: `\`${r.diff}\`  ·  상수 \`${r.level.toFixed(1)}\``,
+          value: `\`${r.diff}\`  ·  상수 \`${r.level.toFixed(1)}\`  ·  ${r.isNew ? "신곡" : "구곡"}`,
           inline: true,
         },
         {
