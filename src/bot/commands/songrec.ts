@@ -79,6 +79,7 @@ export interface RecommendOptions {
   kind?: "ST" | "DX"; // 지정 시 해당 채보 타입만
   play?: "played" | "unplayed"; // 지정 시 플레이/미플레이만
   diff?: string; // 지정 시 해당 난이도만 (BASIC~Re:MASTER)
+  category?: "new" | "others"; // 지정 시 신곡/구곡만
 }
 
 // 기본 플레이:미플레이 목표 비율 (필터 미지정 시)
@@ -135,13 +136,16 @@ export function recommendCharts(
     if (!isIntlAvailable(chart.title)) continue; // 국제판 미수록 곡 제외
     if (opts.kind && chart.kind !== opts.kind) continue; // ST/DX 필터
     if (opts.diff && chart.diff !== opts.diff) continue; // 난이도 필터
+    const isNew = isNewSong(chart.title);
+    if (opts.category === "new" && !isNew) continue; // 신곡/구곡 필터
+    if (opts.category === "others" && isNew) continue;
     const rec = clearMap.get(`${chart.title}|${chart.kind}|${chart.diff}`);
     const userAch = rec?.achievementVal ?? 0;
     const played = userAch > 0;
     if (opts.play === "played" && !played) continue; // 플레이/미플레이 필터
     if (opts.play === "unplayed" && played) continue;
     const fc = rec?.fc ?? "";
-    const floor = isNewSong(chart.title) ? newFloor : oldFloor;
+    const floor = isNew ? newFloor : oldFloor;
     const validTargets = RANKS.filter(
       (rank) =>
         rank.ach > userAch && calcSongRating(rank.ach, chart.level, fc) > floor,
@@ -244,6 +248,16 @@ export const data = new SlashCommandBuilder()
         { name: "Re:MASTER", value: "Re:MASTER" },
       ),
   )
+  .addStringOption((opt) =>
+    opt
+      .setName("곡분류")
+      .setDescription("신곡 / 구곡만 (Optional)")
+      .setRequired(false)
+      .addChoices(
+        { name: "신곡", value: "new" },
+        { name: "구곡", value: "others" },
+      ),
+  )
   .addUserOption((opt) =>
     opt
       .setName("user")
@@ -286,10 +300,12 @@ export async function execute(
   const kindOpt = interaction.options.getString("type");
   const playOpt = interaction.options.getString("플레이여부");
   const diffOpt = interaction.options.getString("난이도");
+  const catOpt = interaction.options.getString("곡분류");
   const recs = recommendCharts(clearRecords, 3, {
     kind: kindOpt === "ST" || kindOpt === "DX" ? kindOpt : undefined,
     play: playOpt === "played" || playOpt === "unplayed" ? playOpt : undefined,
     diff: diffOpt ?? undefined,
+    category: catOpt === "new" || catOpt === "others" ? catOpt : undefined,
   });
   if (recs.length === 0) {
     await interaction.reply({
